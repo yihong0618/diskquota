@@ -1,0 +1,65 @@
+#! build test job config for centos6
+#@ load("base.lib.yml", "add_res")
+#@ def centos6_build_test_conf():
+name: diskquota_centos6_build_test
+res_build_image: centos-gpdb-dev-6
+res_test_image: centos-gpdb-dev-6
+res_gpdb_bin: bin_gpdb_centos6
+diskquota_os: rhel6
+res_diskquota_bin: bin_diskquota_centos6
+#@ end
+
+#! build test job config for centos7
+#@ def centos7_build_test_conf():
+name: diskquota_centos7_build_test
+res_build_image: centos-gpdb-dev-7
+res_test_image: centos-gpdb-dev-7
+res_gpdb_bin: bin_gpdb_centos7
+diskquota_os: rhel7
+res_diskquota_bin: bin_diskquota_centos7
+#@ end
+
+#! build test job config for ubuntu18
+#@ def ubuntu18_build_test_conf():
+name: diskquota_ubuntu18_build_test
+res_build_image: ubuntu18-image-build
+res_test_image: ubuntu18-image-test
+res_gpdb_bin: bin_gpdb_centos7
+diskquota_os: rhel7
+res_diskquota_bin: bin_diskquota_centos7
+#@ end
+
+
+#@ def build_test_job(res_map, conf):
+#@ add_res(res_map, conf)
+name: #@ conf["name"]
+max_in_flight: 3
+plan:
+#@ if conf["res_build_image"] == conf["res_test_image"]:
+- get: #@ conf["res_build_image"]
+#@ else:
+- get: #@ conf["res_build_image"]
+- get: #@ conf["res_test_image"]
+#@ end
+- get: diskquota_src
+  trigger: true
+- get: bin_gpdb
+  resource: #@ conf["res_gpdb_bin"]
+- get: gpdb_src
+- task: build_diskquota
+  file: diskquota_src/concourse/tasks/build_diskquota.yml
+  image: #@ conf["res_build_image"]
+  params:
+    DISKQUOTA_OS: #@ conf["diskquota_os"]
+- task: test_diskquota
+  file: diskquota_src/concourse/tasks/test_diskquota.yml
+  image: #@ conf["res_test_image"]
+  input_mapping:
+    bin_diskquota: diskquota_artifacts
+  params:
+    DISKQUOTA_OS: #@ conf["diskquota_os"]
+- aggregate:
+  - put: #@ conf["res_diskquota_bin"]
+  params:
+    file: diskquota_artifacts/diskquota*.tar.gz
+#@ end
