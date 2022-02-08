@@ -28,4 +28,5 @@ test: test_ctas_role
 test: test_ctas_schema
 test: test_ctas_tablespace_role
 test: test_ctas_tablespace_schema
+test: test_default_tablespace
 test: clean

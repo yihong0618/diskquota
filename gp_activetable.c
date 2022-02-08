@@ -704,7 +704,7 @@ get_active_tables_oid(void)
 
 		rnode.dbNode = active_table_file_entry->dbid;
 		rnode.relNode = active_table_file_entry->relfilenode;
-		rnode.spcNode = active_table_file_entry->tablespaceoid;
+		rnode.spcNode = OidIsValid(active_table_file_entry->tablespaceoid) ? active_table_file_entry->tablespaceoid : MyDatabaseTableSpace;
 		relOid = get_relid_by_relfilenode(rnode);
 
 		if (relOid != InvalidOid)

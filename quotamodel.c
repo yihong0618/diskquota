@@ -857,6 +857,11 @@ calculate_table_disk_usage(bool is_init, HTAB *local_active_table_stat_map)
 			relnamespace = classForm->relnamespace;
 			relowner = classForm->relowner;
 			reltablespace = classForm->reltablespace;
+
+			if (!OidIsValid(reltablespace))
+			{
+				reltablespace = MyDatabaseTableSpace;
+			}
 		}
 		else
 		{
@@ -1452,6 +1457,12 @@ get_rel_owner_schema_tablespace(Oid relid, Oid *ownerOid, Oid *nsOid, Oid *table
 		*ownerOid = reltup->relowner;
 		*nsOid = reltup->relnamespace;
 		*tablespaceoid = reltup->reltablespace;
+
+		if (!OidIsValid(*tablespaceoid))
+		{
+			*tablespaceoid = MyDatabaseTableSpace;
+		}
+
 		ReleaseSysCache(tp);
 	}
 	return found;
@@ -1780,13 +1791,13 @@ refresh_blackmap(PG_FUNCTION_ARGS)
 		keyitem.targettype    = DatumGetInt32(GetAttributeByNum(lt, 4, &isnull));
 		/*
 		 * If the current quota limit type is NAMESPACE_TABLESPACE_QUOTA or
-		 * ROLE_TABLESPACE_QUOTA, we should explicitly set DEFAULTTABLESPACE_OID
+		 * ROLE_TABLESPACE_QUOTA, we should explicitly set MyDatabaseTableSpace
 		 * for relations whose reltablespace is InvalidOid.
 		 */
 		if ((keyitem.targettype == NAMESPACE_TABLESPACE_QUOTA ||
 			 keyitem.targettype == ROLE_TABLESPACE_QUOTA) &&
 			!OidIsValid(keyitem.tablespaceoid))
-			keyitem.tablespaceoid = DEFAULTTABLESPACE_OID;
+			keyitem.tablespaceoid = MyDatabaseTableSpace;
 		segexceeded           = DatumGetBool(GetAttributeByNum(lt, 5, &isnull));
 
 		blackmapentry = hash_search(local_blackmap, &keyitem, HASH_ENTER_NULL, NULL);
@@ -1819,7 +1830,7 @@ refresh_blackmap(PG_FUNCTION_ARGS)
 			Form_pg_class	form = (Form_pg_class) GETSTRUCT(tuple);
 			Oid				relnamespace = form->relnamespace;
 			Oid				reltablespace = OidIsValid(form->reltablespace) ?
-												form->reltablespace : DEFAULTTABLESPACE_OID;
+												form->reltablespace : MyDatabaseTableSpace;
 			Oid				relowner = form->relowner;
 			BlackMapEntry	keyitem;
 			bool			found;
@@ -1881,7 +1892,7 @@ refresh_blackmap(PG_FUNCTION_ARGS)
 							Form_pg_class				curr_form = (Form_pg_class) GETSTRUCT(curr_tuple);
 							Oid							curr_reltablespace =
 								OidIsValid(curr_form->reltablespace) ?
-								curr_form->reltablespace : DEFAULTTABLESPACE_OID;
+								curr_form->reltablespace : MyDatabaseTableSpace;
 							RelFileNode					relfilenode =
 								{ .dbNode = MyDatabaseId,
 								  .relNode = curr_form->relfilenode,
