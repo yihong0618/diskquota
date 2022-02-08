@@ -280,7 +280,7 @@ report_active_table_helper(const RelFileNodeBackend *relFileNode)
 	MemSet(&item, 0, sizeof(DiskQuotaActiveTableFileEntry));
 	item.dbid = relFileNode->node.dbNode;
 	item.relfilenode = relFileNode->node.relNode;
-	item.tablespaceoid = relFileNode->node.spcNode;
+	item.tablespaceoid = OidIsValid(relFileNode->node.spcNode) ? relFileNode->node.spcNode : MyDatabaseTableSpace;
 
 	LWLockAcquire(diskquota_locks.active_table_lock, LW_EXCLUSIVE);
 	entry = hash_search(active_tables_map, &item, HASH_ENTER_NULL, &found);
@@ -347,7 +347,7 @@ gp_fetch_active_tables(bool is_init)
 }
 
 /*
- * Function to get the table size from each segments
+ * Function to get the table size from each segment
  * There are three mode:
  * 1. gather active table oid from all the segments, since table may only
  * be modified on a subset of the segments, we need to firstly gather the

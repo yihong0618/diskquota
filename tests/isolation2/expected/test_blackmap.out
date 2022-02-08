@@ -44,7 +44,7 @@ SELECT gp_inject_fault_infinite('check_blackmap_by_relfilenode', 'reset', dbid) 
 
 -- Session 1 will return and emit an error message saying that the quota limit is exceeded on seg0.
 1<:  <... completed>
-ERROR:  schema's disk space quota exceeded with name:2200  (seg0 127.0.0.1:6002 pid=137774)
+ERROR:  schema's disk space quota exceeded with name:2200  (seg0 127.0.0.1:6002 pid=25165)
 
 -- Clean up the blackmap on seg0.
 SELECT diskquota.refresh_blackmap( ARRAY[]::diskquota.blackmap_entry[], ARRAY[]::oid[]) FROM gp_dist_random('gp_id') WHERE gp_segment_id=0;
@@ -83,7 +83,7 @@ SELECT gp_inject_fault_infinite('check_blackmap_by_relfilenode', 'reset', dbid) 
 
 -- Session 1 will return and emit an error message saying that the quota limit is exceeded on seg0.
 1<:  <... completed>
-ERROR:  schema's disk space quota exceeded with name:2200  (seg0 127.0.0.1:6002 pid=137774)
+ERROR:  schema's disk space quota exceeded with name:2200  (seg0 127.0.0.1:6002 pid=25165)
 
 -- Clean up the blackmap on seg0.
 SELECT diskquota.refresh_blackmap( ARRAY[]::diskquota.blackmap_entry[], ARRAY[]::oid[]) FROM gp_dist_random('gp_id') WHERE gp_segment_id=0;
@@ -122,7 +122,7 @@ SELECT gp_inject_fault_infinite('check_blackmap_by_relfilenode', 'reset', dbid) 
 
 -- Session 1 will return and emit an error message saying that the quota limit is exceeded on seg0.
 1<:  <... completed>
-ERROR:  schema's disk space quota exceeded with name:2200  (seg0 127.0.0.1:6002 pid=137774)
+ERROR:  schema's disk space quota exceeded with name:2200  (seg0 127.0.0.1:6002 pid=25165)
 
 -- Clean up the blackmap on seg0.
 SELECT diskquota.refresh_blackmap( ARRAY[]::diskquota.blackmap_entry[], ARRAY[]::oid[]) FROM gp_dist_random('gp_id') WHERE gp_segment_id=0;
@@ -163,7 +163,7 @@ SELECT gp_inject_fault_infinite('check_blackmap_by_relfilenode', 'reset', dbid) 
 
 -- Session 1 will return and emit an error message saying that the quota limit is exceeded on seg0.
 1<:  <... completed>
-ERROR:  schema's disk space quota exceeded with name:2200  (seg0 127.0.0.1:6002 pid=137774)
+ERROR:  schema's disk space quota exceeded with name:2200  (seg0 127.0.0.1:6002 pid=25165)
 
 -- Clean up the blackmap on seg0.
 SELECT diskquota.refresh_blackmap( ARRAY[]::diskquota.blackmap_entry[], ARRAY[]::oid[]) FROM gp_dist_random('gp_id') WHERE gp_segment_id=0;
@@ -195,7 +195,7 @@ SELECT gp_inject_fault_infinite('check_blackmap_by_relfilenode', 'reset', dbid) 
  Success:                 
 (1 row)
 1<:  <... completed>
-ERROR:  tablespace:1663 schema:2200 diskquota exceeded per segment quota  (seg0 127.0.0.1:6002 pid=137774)
+ERROR:  tablespace:1663 schema:2200 diskquota exceeded per segment quota  (seg0 127.0.0.1:6002 pid=25165)
 -- Clean up the blackmap on seg0.
 SELECT diskquota.refresh_blackmap( ARRAY[]::diskquota.blackmap_entry[], ARRAY[]::oid[]) FROM gp_dist_random('gp_id') WHERE gp_segment_id=0;
  refresh_blackmap 
@@ -226,7 +226,7 @@ SELECT gp_inject_fault_infinite('check_blackmap_by_relfilenode', 'reset', dbid) 
  Success:                 
 (1 row)
 1<:  <... completed>
-ERROR:  tablespace:1663 role:10 diskquota exceeded per segment quota  (seg0 127.0.0.1:6002 pid=137774)
+ERROR:  tablespace:1663 role:10 diskquota exceeded per segment quota  (seg0 127.0.0.1:6002 pid=25165)
 -- Clean up the blackmap on seg0.
 SELECT diskquota.refresh_blackmap( ARRAY[]::diskquota.blackmap_entry[], ARRAY[]::oid[]) FROM gp_dist_random('gp_id') WHERE gp_segment_id=0;
  refresh_blackmap 
@@ -268,7 +268,7 @@ CREATE
 
 -- This function replaces the oid appears in the auxiliary relation's name
 -- with the corresponding relname of that oid.
-CREATE OR REPLACE FUNCTION replace_oid_with_relname(given_name text, filename text) RETURNS text AS $$                                                                      /*in func*/ BEGIN                                                                                   /*in func*/ RETURN COALESCE(                                                                      /*in func*/ REGEXP_REPLACE(given_name,                                                          /*in func*/ '^(pg_toast_|pg_aoseg_|pg_aovisimap_|pg_aoblkdir_|pg_aocsseg_)\d+',              /*in func*/ '\1' ||                                                                          /*in func*/ (SELECT DISTINCT relname FROM read_relation_cache_from_file(filename)            /*in func*/ WHERE reloid=REGEXP_REPLACE(given_name, '\D', '', 'g')::oid), 'g'), given_name);/*in func*/ END;                                                                                    /*in func*/ $$ LANGUAGE plpgsql;
+CREATE OR REPLACE FUNCTION replace_oid_with_relname(given_name text, filename text) RETURNS text AS $$                                                                      /*in func*/ BEGIN                                                                                   /*in func*/ RETURN COALESCE(                                                                      /*in func*/ REGEXP_REPLACE(given_name,                                                          /*in func*/ '^(pg_toast_|pg_aoseg_|pg_aovisimap_|pg_aoblkdir_|pg_aocsseg_)\d+',              /*in func*/ '\1' ||                                                                          /*in func*/ (SELECT DISTINCT relname FROM read_relation_cache_from_file(filename)            /*in func*/ WHERE  REGEXP_REPLACE(given_name, '\D', '', 'g') <> '' AND reloid=REGEXP_REPLACE(given_name, '\D', '', 'g')::oid), 'g'), given_name);/*in func*/ END;                                                                                    /*in func*/ $$ LANGUAGE plpgsql;
 CREATE
 
 -- This function helps dispatch blackmap for the given relation to seg0.
@@ -310,7 +310,7 @@ SELECT gp_inject_fault_infinite('check_blackmap_by_relfilenode', 'reset', dbid) 
  Success:                 
 (1 row)
 1<:  <... completed>
-ERROR:  schema's disk space quota exceeded with name:2200  (seg0 127.0.0.1:6002 pid=137774)
+ERROR:  schema's disk space quota exceeded with name:2200  (seg0 127.0.0.1:6002 pid=25165)
 1: ABORT;
 ABORT
 -- Clean up the blackmap on seg0.
@@ -355,7 +355,7 @@ SELECT gp_inject_fault_infinite('check_blackmap_by_relfilenode', 'reset', dbid) 
  Success:                 
 (1 row)
 1<:  <... completed>
-ERROR:  role's disk space quota exceeded with name:10  (seg0 127.0.0.1:6002 pid=137774)
+ERROR:  role's disk space quota exceeded with name:10  (seg0 127.0.0.1:6002 pid=25165)
 1: ABORT;
 ABORT
 -- Clean up the blackmap on seg0.
@@ -400,7 +400,7 @@ SELECT gp_inject_fault_infinite('check_blackmap_by_relfilenode', 'reset', dbid) 
  Success:                 
 (1 row)
 1<:  <... completed>
-ERROR:  tablespace:1663 schema:2200 diskquota exceeded  (seg0 127.0.0.1:6002 pid=137774)
+ERROR:  tablespace:1663 schema:2200 diskquota exceeded  (seg0 127.0.0.1:6002 pid=25165)
 1: ABORT;
 ABORT
 -- Clean up the blackmap on seg0.
@@ -445,7 +445,7 @@ SELECT gp_inject_fault_infinite('check_blackmap_by_relfilenode', 'reset', dbid) 
  Success:                 
 (1 row)
 1<:  <... completed>
-ERROR:  tablespace:1663 role:10 diskquota exceeded  (seg0 127.0.0.1:6002 pid=137774)
+ERROR:  tablespace:1663 role:10 diskquota exceeded  (seg0 127.0.0.1:6002 pid=25165)
 1: ABORT;
 ABORT
 -- Clean up the blackmap on seg0.
@@ -490,7 +490,7 @@ SELECT gp_inject_fault_infinite('check_blackmap_by_relfilenode', 'reset', dbid) 
  Success:                 
 (1 row)
 1<:  <... completed>
-ERROR:  tablespace:1663 schema:2200 diskquota exceeded per segment quota  (seg0 127.0.0.1:6002 pid=137774)
+ERROR:  tablespace:1663 schema:2200 diskquota exceeded per segment quota  (seg0 127.0.0.1:6002 pid=25165)
 1: ABORT;
 ABORT
 -- Clean up the blackmap on seg0.
@@ -535,7 +535,7 @@ SELECT gp_inject_fault_infinite('check_blackmap_by_relfilenode', 'reset', dbid) 
  Success:                 
 (1 row)
 1<:  <... completed>
-ERROR:  tablespace:1663 role:10 diskquota exceeded per segment quota  (seg0 127.0.0.1:6002 pid=137774)
+ERROR:  tablespace:1663 role:10 diskquota exceeded per segment quota  (seg0 127.0.0.1:6002 pid=25165)
 1: ABORT;
 ABORT
 -- Clean up the blackmap on seg0.
@@ -582,7 +582,7 @@ SELECT gp_inject_fault_infinite('check_blackmap_by_relfilenode', 'reset', dbid) 
  Success:                 
 (1 row)
 1<:  <... completed>
-ERROR:  schema's disk space quota exceeded with name:2200  (seg0 127.0.0.1:6002 pid=137774)
+ERROR:  schema's disk space quota exceeded with name:2200  (seg0 127.0.0.1:6002 pid=25165)
 1: ABORT;
 ABORT
 -- Clean up the blackmap on seg0.
@@ -630,7 +630,7 @@ SELECT gp_inject_fault_infinite('check_blackmap_by_relfilenode', 'reset', dbid) 
  Success:                 
 (1 row)
 1<:  <... completed>
-ERROR:  schema's disk space quota exceeded with name:2200  (seg0 127.0.0.1:6002 pid=137774)
+ERROR:  schema's disk space quota exceeded with name:2200  (seg0 127.0.0.1:6002 pid=25165)
 1: ABORT;
 ABORT
 -- Clean up the blackmap on seg0.
@@ -678,7 +678,7 @@ SELECT gp_inject_fault_infinite('check_blackmap_by_relfilenode', 'reset', dbid) 
  Success:                 
 (1 row)
 1<:  <... completed>
-ERROR:  schema's disk space quota exceeded with name:2200  (seg0 127.0.0.1:6002 pid=137774)
+ERROR:  schema's disk space quota exceeded with name:2200  (seg0 127.0.0.1:6002 pid=25165)
 1: ABORT;
 ABORT
 -- Clean up the blackmap on seg0.
