@@ -331,11 +331,14 @@ check_quota_map(QuotaType type)
 			if (entry->size >= entry->limit)
 			{
 				Oid targetOid = entry->keys[0];
-				Oid tablespaceoid =
-					(type == NAMESPACE_TABLESPACE_QUOTA) || (type == ROLE_TABLESPACE_QUOTA) ? entry->keys[1] : InvalidOid;
-				/* when quota type is not NAMESPACE_TABLESPACE_QUOTA or ROLE_TABLESPACE_QUOTA, the tablespaceoid
-				 * is set to be InvalidOid, so when we get it from map, also set it to be InvalidOid
-				 */
+				Oid tablespaceoid = InvalidOid;
+
+				if (type == NAMESPACE_TABLESPACE_QUOTA || type == ROLE_TABLESPACE_QUOTA) {
+					// fix tablespaceoid for tablespace related quota.
+					// the default tablespace in syscache is InvalidOid, but actually it shoud be MyDatabaseTableSpace
+					tablespaceoid = entry->keys[1] == InvalidOid ? MyDatabaseTableSpace : entry->keys[1];
+				}
+
 				bool segmentExceeded = entry->segid == -1 ? false : true;
 				add_quota_to_blacklist(type, targetOid, tablespaceoid, segmentExceeded);
 			}
