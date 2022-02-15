@@ -9,12 +9,16 @@ SELECT diskquota.enable_hardlimit();
  
 (1 row)
 
+DROP ROLE if EXISTS role1;
+NOTICE:  role "role1" does not exist, skipping
+CREATE ROLE role1 SUPERUSER;
+SET ROLE role1;
 DROP TABLE if EXISTS t;
 NOTICE:  table "t" does not exist, skipping
 CREATE TABLE t (i int);
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
-SELECT diskquota.set_role_tablespace_quota(current_role, 'pg_default', '1 MB');
+SELECT diskquota.set_role_tablespace_quota('role1', 'pg_default', '1 MB');
  set_role_tablespace_quota 
 ---------------------------
  
@@ -28,12 +32,13 @@ SELECT diskquota.wait_for_worker_new_epoch();
 
 -- expect insert to fail
 INSERT INTO t SELECT generate_series(1, 1000000);
-ERROR:  tablespace:pg_default role:gpadmin diskquota exceeded
+ERROR:  tablespace:1663 role:2972112 diskquota exceeded  (seg1 127.0.0.1:6003 pid=7168)
 DROP TABLE IF EXISTS t;
 -- database in customized tablespace with hard limits on
 CREATE TABLESPACE custom_tablespace LOCATION '/tmp/custom_tablespace';
 CREATE DATABASE db_with_tablespace TABLESPACE custom_tablespace;
 \c db_with_tablespace;
+SET ROLE role1;
 CREATE EXTENSION diskquota;
 SELECT diskquota.enable_hardlimit();
  enable_hardlimit 
@@ -41,7 +46,7 @@ SELECT diskquota.enable_hardlimit();
  
 (1 row)
 
-SELECT diskquota.set_role_tablespace_quota(current_role, 'custom_tablespace', '1 MB');
+SELECT diskquota.set_role_tablespace_quota('role1', 'custom_tablespace', '1 MB');
  set_role_tablespace_quota 
 ---------------------------
  
@@ -55,18 +60,17 @@ SELECT diskquota.wait_for_worker_new_epoch();
 
 -- start_ignore
 SELECT * from diskquota.blackmap;
-      target_type      | target_oid | database_oid | tablespace_oid | seg_exceeded | dbnode | spcnode | relnode | segid 
------------------------+------------+--------------+----------------+--------------+--------+---------+---------+-------
- NAMESPACE_QUOTA       |    1123656 |      1123568 |              0 | f            |      0 |       0 |       0 |    -1
- ROLE_TABLESPACE_QUOTA |         10 |      1123568 |           1663 | f            |      0 |       0 |       0 |    -1
-(2 rows)
+   target_type   | target_oid | database_oid | tablespace_oid | seg_exceeded | dbnode | spcnode | relnode | segid 
+-----------------+------------+--------------+----------------+--------------+--------+---------+---------+-------
+ NAMESPACE_QUOTA |    2948065 |      2947977 |              0 | f            |      0 |       0 |       0 |    -1
+(1 row)
 
 -- end_ignore
 -- expect create table to fail
 CREATE TABLE t_in_custom_tablespace AS SELECT generate_series(1, 1000000);
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column(s) named 'generate_series' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
-ERROR:  tablespace:1147723 role:10 diskquota exceeded  (seg1 127.0.0.1:6003 pid=26397)
+ERROR:  tablespace:2972116 role:2972112 diskquota exceeded  (seg1 127.0.0.1:6003 pid=7180)
 -- clean up
 DROP TABLE IF EXISTS t_in_custom_tablespace;
 NOTICE:  table "t_in_custom_tablespace" does not exist, skipping
@@ -81,6 +85,8 @@ DROP EXTENSION IF EXISTS diskquota;
 DROP DATABASE IF EXISTS db_with_tablespace;
 DROP TABLESPACE IF EXISTS custom_tablespace;
 \! rm -rf /tmp/custom_tablespace
+RESET ROLE;
+DROP ROLE IF EXISTS role1;
 SELECT diskquota.disable_hardlimit();
  disable_hardlimit 
 -------------------
