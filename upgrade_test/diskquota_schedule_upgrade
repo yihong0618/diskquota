@@ -16,7 +16,7 @@ test: prepare
 test: set_config
 # upgrade diskquota to new version
 test: install_new_version
-test: upgrade_extension
+test: upgrade_extension_to_2X
 # run by new version diskquota
 test: test_role test_schema test_reschema test_temp_role test_rename test_delete_quota test_tablespace_schema test_tablespace_role test_tablespace_schema_perseg test_tablespace_role_perseg
 test: clean
