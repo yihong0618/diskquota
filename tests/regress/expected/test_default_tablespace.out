@@ -37,6 +37,19 @@ INSERT INTO t SELECT generate_series(1, 1000000);
 -- expect insert to fail
 INSERT INTO t SELECT generate_series(1, 1000000);
 ERROR:  tablespace:pg_default role:role1 diskquota exceeded
+SELECT diskquota.wait_for_worker_new_epoch();
+ wait_for_worker_new_epoch 
+---------------------------
+ t
+(1 row)
+
+select r.rolname, t.spcname, b.target_type from diskquota.blackmap as b, pg_tablespace as t, pg_roles as r where b.tablespace_oid = t.oid and b.target_oid = r.oid;
+ rolname |  spcname   |      target_type      
+---------+------------+-----------------------
+ role1   | pg_default | ROLE_TABLESPACE_QUOTA
+ gpadmin | pg_default | ROLE_TABLESPACE_QUOTA
+(2 rows)
+
 DROP TABLE IF EXISTS t;
 CREATE TABLE t (i int);
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
@@ -56,7 +69,7 @@ SELECT diskquota.wait_for_worker_new_epoch();
 
 -- expect insert to fail
 INSERT INTO t SELECT generate_series(1, 1000000);
-ERROR:  tablespace:1663 role:3891527 diskquota exceeded  (seg1 127.0.0.1:6003 pid=8480)
+ERROR:  tablespace:1663 role:4034486 diskquota exceeded  (seg1 127.0.0.1:6003 pid=32001)
 DROP TABLE IF EXISTS t;
 -- database in customized tablespace
 CREATE TABLESPACE custom_tablespace LOCATION '/tmp/custom_tablespace';
@@ -88,6 +101,15 @@ CREATE TABLE t_in_custom_tablespace AS SELECT generate_series(1, 100);
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column(s) named 'generate_series' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 INSERT INTO t_in_custom_tablespace SELECT generate_series(1, 1000000);
+-- expect insert to fail
+INSERT INTO t_in_custom_tablespace SELECT generate_series(1, 1000000);
+ERROR:  tablespace:custom_tablespace role:role1 diskquota exceeded
+SELECT diskquota.wait_for_worker_new_epoch();
+ wait_for_worker_new_epoch 
+---------------------------
+ t
+(1 row)
+
 select r.rolname, t.spcname, b.target_type from diskquota.blackmap as b, pg_tablespace as t, pg_roles as r where b.tablespace_oid = t.oid and b.target_oid = r.oid;
  rolname |      spcname      |      target_type      
 ---------+-------------------+-----------------------
@@ -95,9 +117,6 @@ select r.rolname, t.spcname, b.target_type from diskquota.blackmap as b, pg_tabl
  role1   | custom_tablespace | ROLE_TABLESPACE_QUOTA
 (2 rows)
 
--- expect insert to fail
-INSERT INTO t_in_custom_tablespace SELECT generate_series(1, 1000000);
-ERROR:  tablespace:custom_tablespace role:role1 diskquota exceeded
 -- with hard limits on
 SELECT diskquota.enable_hardlimit();
  enable_hardlimit 
@@ -117,13 +136,6 @@ CREATE TABLE t_in_custom_tablespace AS SELECT generate_series(1, 1000000);
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column(s) named 'generate_series' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 ERROR:  tablespace:custom_tablespace role:role1 diskquota exceeded
-select r.rolname, t.spcname, b.target_type from diskquota.blackmap as b, pg_tablespace as t, pg_roles as r where b.tablespace_oid = t.oid and b.target_oid = r.oid;
- rolname |      spcname      |      target_type      
----------+-------------------+-----------------------
- gpadmin | pg_default        | ROLE_TABLESPACE_QUOTA
- role1   | custom_tablespace | ROLE_TABLESPACE_QUOTA
-(2 rows)
-
 -- clean up
 DROP TABLE IF EXISTS t_in_custom_tablespace;
 NOTICE:  table "t_in_custom_tablespace" does not exist, skipping

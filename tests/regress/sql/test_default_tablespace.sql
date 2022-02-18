@@ -19,10 +19,10 @@ SELECT diskquota.wait_for_worker_new_epoch();
 -- expect insert to success
 INSERT INTO t SELECT generate_series(1, 100);
 INSERT INTO t SELECT generate_series(1, 1000000);
-SELECT diskquota.wait_for_worker_new_epoch();
-select r.rolname, t.spcname, b.target_type from diskquota.blackmap as b, pg_tablespace as t, pg_roles as r where b.tablespace_oid = t.oid and b.target_oid = r.oid;
 -- expect insert to fail
 INSERT INTO t SELECT generate_series(1, 1000000);
+SELECT diskquota.wait_for_worker_new_epoch();
+select r.rolname, t.spcname, b.target_type from diskquota.blackmap as b, pg_tablespace as t, pg_roles as r where b.tablespace_oid = t.oid and b.target_oid = r.oid;
 
 DROP TABLE IF EXISTS t;
 CREATE TABLE t (i int);
@@ -48,10 +48,10 @@ SELECT diskquota.wait_for_worker_new_epoch();
 -- expect insert to success
 CREATE TABLE t_in_custom_tablespace AS SELECT generate_series(1, 100);
 INSERT INTO t_in_custom_tablespace SELECT generate_series(1, 1000000);
-SELECT diskquota.wait_for_worker_new_epoch();
-select r.rolname, t.spcname, b.target_type from diskquota.blackmap as b, pg_tablespace as t, pg_roles as r where b.tablespace_oid = t.oid and b.target_oid = r.oid;
 -- expect insert to fail
 INSERT INTO t_in_custom_tablespace SELECT generate_series(1, 1000000);
+SELECT diskquota.wait_for_worker_new_epoch();
+select r.rolname, t.spcname, b.target_type from diskquota.blackmap as b, pg_tablespace as t, pg_roles as r where b.tablespace_oid = t.oid and b.target_oid = r.oid;
 
 -- with hard limits on
 SELECT diskquota.enable_hardlimit();
