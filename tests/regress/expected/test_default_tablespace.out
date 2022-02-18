@@ -37,17 +37,14 @@ INSERT INTO t SELECT generate_series(1, 1000000);
 -- expect insert to fail
 INSERT INTO t SELECT generate_series(1, 1000000);
 ERROR:  tablespace:pg_default role:role1 diskquota exceeded
-SELECT diskquota.wait_for_worker_new_epoch();
- wait_for_worker_new_epoch 
----------------------------
- t
-(1 row)
-
-select r.rolname, t.spcname, b.target_type from diskquota.blackmap as b, pg_tablespace as t, pg_roles as r where b.tablespace_oid = t.oid and b.target_oid = r.oid;
+SELECT r.rolname, t.spcname, b.target_type
+FROM diskquota.blackmap AS b, pg_tablespace AS t, pg_roles AS r
+WHERE b.tablespace_oid = t.oid AND b.target_oid = r.oid
+ORDER BY r.rolname, t.spcname, b.target_type;
  rolname |  spcname   |      target_type      
 ---------+------------+-----------------------
- role1   | pg_default | ROLE_TABLESPACE_QUOTA
  gpadmin | pg_default | ROLE_TABLESPACE_QUOTA
+ role1   | pg_default | ROLE_TABLESPACE_QUOTA
 (2 rows)
 
 DROP TABLE IF EXISTS t;
@@ -69,7 +66,7 @@ SELECT diskquota.wait_for_worker_new_epoch();
 
 -- expect insert to fail
 INSERT INTO t SELECT generate_series(1, 1000000);
-ERROR:  tablespace:1663 role:4034486 diskquota exceeded  (seg1 127.0.0.1:6003 pid=32001)
+ERROR:  tablespace:1663 role:4104732 diskquota exceeded  (seg0 127.0.0.1:6002 pid=9481)
 DROP TABLE IF EXISTS t;
 -- database in customized tablespace
 CREATE TABLESPACE custom_tablespace LOCATION '/tmp/custom_tablespace';
@@ -104,13 +101,10 @@ INSERT INTO t_in_custom_tablespace SELECT generate_series(1, 1000000);
 -- expect insert to fail
 INSERT INTO t_in_custom_tablespace SELECT generate_series(1, 1000000);
 ERROR:  tablespace:custom_tablespace role:role1 diskquota exceeded
-SELECT diskquota.wait_for_worker_new_epoch();
- wait_for_worker_new_epoch 
----------------------------
- t
-(1 row)
-
-select r.rolname, t.spcname, b.target_type from diskquota.blackmap as b, pg_tablespace as t, pg_roles as r where b.tablespace_oid = t.oid and b.target_oid = r.oid;
+SELECT r.rolname, t.spcname, b.target_type
+FROM diskquota.blackmap AS b, pg_tablespace AS t, pg_roles AS r
+WHERE b.tablespace_oid = t.oid AND b.target_oid = r.oid
+ORDER BY r.rolname, t.spcname, b.target_type;
  rolname |      spcname      |      target_type      
 ---------+-------------------+-----------------------
  gpadmin | pg_default        | ROLE_TABLESPACE_QUOTA

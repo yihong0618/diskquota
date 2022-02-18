@@ -21,8 +21,11 @@ INSERT INTO t SELECT generate_series(1, 100);
 INSERT INTO t SELECT generate_series(1, 1000000);
 -- expect insert to fail
 INSERT INTO t SELECT generate_series(1, 1000000);
-SELECT diskquota.wait_for_worker_new_epoch();
-select r.rolname, t.spcname, b.target_type from diskquota.blackmap as b, pg_tablespace as t, pg_roles as r where b.tablespace_oid = t.oid and b.target_oid = r.oid;
+
+SELECT r.rolname, t.spcname, b.target_type
+FROM diskquota.blackmap AS b, pg_tablespace AS t, pg_roles AS r
+WHERE b.tablespace_oid = t.oid AND b.target_oid = r.oid
+ORDER BY r.rolname, t.spcname, b.target_type;
 
 DROP TABLE IF EXISTS t;
 CREATE TABLE t (i int);
@@ -50,8 +53,11 @@ CREATE TABLE t_in_custom_tablespace AS SELECT generate_series(1, 100);
 INSERT INTO t_in_custom_tablespace SELECT generate_series(1, 1000000);
 -- expect insert to fail
 INSERT INTO t_in_custom_tablespace SELECT generate_series(1, 1000000);
-SELECT diskquota.wait_for_worker_new_epoch();
-select r.rolname, t.spcname, b.target_type from diskquota.blackmap as b, pg_tablespace as t, pg_roles as r where b.tablespace_oid = t.oid and b.target_oid = r.oid;
+
+SELECT r.rolname, t.spcname, b.target_type
+FROM diskquota.blackmap AS b, pg_tablespace AS t, pg_roles AS r
+WHERE b.tablespace_oid = t.oid AND b.target_oid = r.oid
+ORDER BY r.rolname, t.spcname, b.target_type;
 
 -- with hard limits on
 SELECT diskquota.enable_hardlimit();
