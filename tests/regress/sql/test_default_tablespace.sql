@@ -69,7 +69,7 @@ ORDER BY r.rolname, t.spcname, b.target_type;
 DROP TABLE IF EXISTS t_in_custom_tablespace;
 SELECT diskquota.set_role_tablespace_quota('role1', 'custom_tablespace', '-1');
 SELECT diskquota.wait_for_worker_new_epoch();
-
+-- change to another role
 SET ROLE role2;
 
 -- with hard limits on
