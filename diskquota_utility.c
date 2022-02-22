@@ -372,6 +372,16 @@ diskquota_pause(PG_FUNCTION_ARGS)
 		dispatch_pause_or_resume_command(PG_NARGS() == 0 ? InvalidOid : dbid,
 										 true /* pause_extension */);
 
+	if (!IS_QUERY_DISPATCHER()) {
+		HASH_SEQ_STATUS			hash_seq;
+		GlobalBlackMapEntry	   *blackmapentry;
+		LWLockAcquire(diskquota_locks.black_map_lock, LW_EXCLUSIVE);
+		hash_seq_init(&hash_seq, disk_quota_black_map);
+		while ((blackmapentry = hash_seq_search(&hash_seq)) != NULL)
+			hash_search(disk_quota_black_map, &blackmapentry->keyitem, HASH_REMOVE, NULL);
+		LWLockRelease(diskquota_locks.black_map_lock);
+	}
+
 	PG_RETURN_VOID();
 }
 
