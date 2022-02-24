@@ -1351,7 +1351,12 @@ diskquota_relation_open(Oid relid, LOCKMODE mode)
 	{
         InterruptHoldoffCount = SavedInterruptHoldoffCount;
 		HOLD_INTERRUPTS();
-		EmitErrorReport();
+		ErrorData *edata = CopyErrorData();
+		// FIXME: on bgworker, we can just use try_relation_open to avoid this.
+		if (edata->sqlerrcode != ERRCODE_UNDEFINED_TABLE) {
+			EmitErrorReport();
+		}
+		FreeErrorData(edata);
 		FlushErrorState();
 		RESUME_INTERRUPTS();
 	}
