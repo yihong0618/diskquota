@@ -1351,6 +1351,7 @@ diskquota_relation_open(Oid relid, LOCKMODE mode)
 	{
         InterruptHoldoffCount = SavedInterruptHoldoffCount;
 		HOLD_INTERRUPTS();
+		EmitErrorReport();
 		FlushErrorState();
 		RESUME_INTERRUPTS();
 	}
