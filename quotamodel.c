@@ -618,9 +618,11 @@ do_check_diskquota_state_is_ready(void)
 					"SELECT diskquota.diskquota_fetch_table_stat(%d, ARRAY[]::oid[]) "
 					"FROM gp_dist_random('gp_id');", ADD_DB_TO_MONITOR);
 	ret = SPI_execute(sql_command.data, true, 0);
-    if (ret != SPI_OK_SELECT)
-        ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
-            	errmsg("[diskquota] check diskquota state SPI_execute failed: error code %d", ret)));
+	if (ret != SPI_OK_SELECT) {
+		pfree(sql_command.data);
+		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
+				errmsg("[diskquota] check diskquota state SPI_execute failed: error code %d", ret)));
+	}
 	pfree(sql_command.data);
 	/* Add current database to the monitored db cache on coordinator */
 	update_diskquota_db_list(MyDatabaseId, HASH_ENTER);
