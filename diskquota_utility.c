@@ -1361,6 +1361,7 @@ diskquota_relation_open(Oid relid, LOCKMODE mode)
 		RESUME_INTERRUPTS();
 	}
 	PG_END_TRY();
+
 	return success_open ? rel : NULL;
 }
 
