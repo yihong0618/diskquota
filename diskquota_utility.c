@@ -1351,12 +1351,7 @@ diskquota_relation_open(Oid relid, LOCKMODE mode)
 	{
         InterruptHoldoffCount = SavedInterruptHoldoffCount;
 		HOLD_INTERRUPTS();
-		ErrorData *edata = CopyErrorData();
-		// FIXME: on bgworker, we can just use try_relation_open to avoid this.
-		if (edata->sqlerrcode != ERRCODE_UNDEFINED_TABLE) {
-			EmitErrorReport();
-		}
-		FreeErrorData(edata);
+		elog(WARNING, "open relation failed, relid=%u", relid);
 		FlushErrorState();
 		RESUME_INTERRUPTS();
 	}
@@ -1365,6 +1360,29 @@ diskquota_relation_open(Oid relid, LOCKMODE mode)
 	return success_open ? rel : NULL;
 }
 
+Relation
+diskquota_try_relation_open(Oid relid, LOCKMODE mode)
+{
+	Relation rel;
+	bool     success_open               = false;
+	int32 SavedInterruptHoldoffCount = InterruptHoldoffCount;
+
+	PG_TRY();
+	{
+		rel = try_relation_open(relid, mode, TRUE);
+		if (rel != NULL) success_open = true;
+	}
+	PG_CATCH();
+	{
+		InterruptHoldoffCount = SavedInterruptHoldoffCount;
+		HOLD_INTERRUPTS();
+		FlushErrorState();
+		RESUME_INTERRUPTS();
+    }
+	PG_END_TRY();
+
+	return success_open ? rel : NULL;
+}
 List*
 diskquota_get_index_list(Oid relid)
 {

@@ -178,7 +178,7 @@ update_relation_cache(Oid relid)
 	memcpy(relid_entry, &relid_entry_data, sizeof(DiskQuotaRelidCacheEntry));
 	LWLockRelease(diskquota_locks.relation_cache_lock);
 
-	prelid = get_primary_table_oid(relid);
+	prelid = get_primary_table_oid(relid, FALSE);
 	if (OidIsValid(prelid) && prelid != relid)
 	{
 		LWLockAcquire(diskquota_locks.relation_cache_lock, LW_EXCLUSIVE);
@@ -193,14 +193,14 @@ update_relation_cache(Oid relid)
 }
 
 static Oid
-parse_primary_table_oid(Oid relid)
+parse_primary_table_oid(Oid relid, bool on_bgworker)
 {
 	Relation rel;
 	Oid namespace;
 	Oid parsed_oid;
 	char relname[NAMEDATALEN];
 
-	rel = diskquota_relation_open(relid, NoLock);
+	rel = on_bgworker ? diskquota_try_relation_open(relid, NoLock) : diskquota_relation_open(relid, NoLock);
 	if (rel == NULL)
 	{
 		return InvalidOid;
@@ -219,13 +219,13 @@ parse_primary_table_oid(Oid relid)
 }
 
 Oid
-get_primary_table_oid(Oid relid)
+get_primary_table_oid(Oid relid, bool on_bgworker)
 {
 	DiskQuotaRelationCacheEntry *relation_entry;
 	Oid cached_prelid = relid;
 	Oid parsed_prelid;
 
-	parsed_prelid = parse_primary_table_oid(relid);
+	parsed_prelid = parse_primary_table_oid(relid, on_bgworker);
 	if (OidIsValid(parsed_prelid))
 	{
 		return parsed_prelid;
