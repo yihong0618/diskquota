@@ -1351,7 +1351,7 @@ diskquota_relation_open(Oid relid, LOCKMODE mode)
 	{
         InterruptHoldoffCount = SavedInterruptHoldoffCount;
 		HOLD_INTERRUPTS();
-		elog(WARNING, "open relation failed, relid=%u", relid);
+		EmitErrorReport();
 		FlushErrorState();
 		RESUME_INTERRUPTS();
 	}
