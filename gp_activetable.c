@@ -26,6 +26,7 @@
 #include "executor/spi.h"
 #include "funcapi.h"
 #include "libpq-fe.h"
+#include "tcop/utility.h"
 #include "utils/faultinjector.h"
 #include "utils/lsyscache.h"
 
@@ -841,16 +842,21 @@ load_table_size(HTAB *local_table_stats_map)
 	TupleDesc	tupdesc;
 	int			i;
 	bool		found;
+	const char *sql;
 	TableEntryKey 	key;
 	DiskQuotaActiveTableEntry *quota_entry;
 	int		extMajorVersion = get_ext_major_version();
 	switch (extMajorVersion)
 	{
 		case 1:
-			ret = SPI_execute("select tableid, size, CAST(-1 AS smallint) from diskquota.table_size", true, 0);
+			sql = "select tableid, size, CAST(-1 AS smallint) from diskquota.table_size";
+			debug_query_string = sql;
+			ret = SPI_execute(sql, true, 0);
 			break;
 		case 2:
-			ret = SPI_execute("select tableid, size, segid from diskquota.table_size", true, 0);
+			sql = "select tableid, size, segid from diskquota.table_size";
+			debug_query_string = sql;
+			ret = SPI_execute(sql, true, 0);
 			break;
 		default:
 			ereport(ERROR,
@@ -907,6 +913,8 @@ load_table_size(HTAB *local_table_stats_map)
 		quota_entry->tablesize = size;
 		quota_entry->segid = segid;
 	}
+
+	debug_query_string = NULL;
 	return;
 }
 

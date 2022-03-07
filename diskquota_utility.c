@@ -32,6 +32,7 @@
 #include "executor/spi.h"
 #include "nodes/makefuncs.h"
 #include "storage/proc.h"
+#include "tcop/utility.h"
 #include "utils/builtins.h"
 #include "utils/faultinjector.h"
 #include "utils/fmgroids.h"
@@ -94,6 +95,7 @@ init_table_size_table(PG_FUNCTION_ARGS)
 	Relation	rel;
 	int 		extMajorVersion;
 	bool		insert_flag;
+	const char  *sql;
 	/*
 	 * If error happens in init_table_size_table, just return error messages
 	 * to the client side. So there is no need to catch the error.
@@ -131,6 +133,7 @@ init_table_size_table(PG_FUNCTION_ARGS)
 	initStringInfo(&buf);
 	initStringInfo(&insert_buf);
 	appendStringInfo(&buf, "delete from diskquota.table_size;");
+	debug_query_string = buf.data;
 	ret = SPI_execute(buf.data, false, 0);
 	if (ret != SPI_OK_DELETE)
 		elog(ERROR, "cannot delete table_size table: error code %d", ret);
@@ -142,6 +145,7 @@ init_table_size_table(PG_FUNCTION_ARGS)
 					 " from pg_class"
 					 " where oid in (%s);",
 					 oids);
+	debug_query_string = buf.data;
 	ret = SPI_execute(buf.data, false, 0);
 	if (ret != SPI_OK_SELECT)
 		elog(ERROR, "cannot fetch in pg_table_size. error code %d", ret);
@@ -157,6 +161,7 @@ init_table_size_table(PG_FUNCTION_ARGS)
 			" from gp_dist_random('pg_class')"
 			" where oid in (%s);",
 			oids);
+	debug_query_string = buf.data;
 	ret = SPI_execute(buf.data, false, 0);
 	if (ret != SPI_OK_SELECT)
 		elog(ERROR, "cannot fetch in pg_table_size. error code %d", ret);
@@ -167,6 +172,7 @@ init_table_size_table(PG_FUNCTION_ARGS)
 	{
 		truncateStringInfo(&insert_buf, insert_buf.len - strlen(","));
 		appendStringInfo(&insert_buf, ";");
+		debug_query_string = insert_buf.data;
 		ret = SPI_execute(insert_buf.data, false, 0);
 		if (ret != SPI_OK_INSERT)
 			elog(ERROR, "cannot insert table_size_per_segment table: error code %d", ret);
@@ -177,11 +183,13 @@ init_table_size_table(PG_FUNCTION_ARGS)
 	appendStringInfo(&buf,
 					 "update diskquota.state set state = %u;",
 					 DISKQUOTA_READY_STATE);
+	debug_query_string = buf.data;
 	ret = SPI_execute(buf.data, false, 0);
 	if (ret != SPI_OK_UPDATE)
 		elog(ERROR, "cannot update state table: error code %d", ret);
 
 	SPI_finish();
+	debug_query_string = NULL;
 	PG_RETURN_VOID();
 }
 
@@ -444,6 +452,7 @@ is_database_empty(void)
 	 */
 	SPI_connect();
 
+	debug_query_string = buf.data;
 	ret = SPI_execute(buf.data, true, 0);
 	if (ret != SPI_OK_SELECT)
 		elog(ERROR, "cannot select pg_class and pg_namespace table: error code %d", errno);
@@ -467,6 +476,7 @@ is_database_empty(void)
 	 * And finish our transaction.
 	 */
 	SPI_finish();
+	debug_query_string = NULL;
 	return is_empty;
 }
 
@@ -781,6 +791,7 @@ set_quota_config_internal(Oid targetoid, int64 quota_limit_mb, QuotaType type)
 	 */
 	SPI_connect();
 
+	debug_query_string = buf.data;
 	ret = SPI_execute(buf.data, true, 0);
 	if (ret != SPI_OK_SELECT)
 		elog(ERROR, "cannot select quota setting table: error code %d", ret);
@@ -792,6 +803,7 @@ set_quota_config_internal(Oid targetoid, int64 quota_limit_mb, QuotaType type)
 		appendStringInfo(&buf,
 						 "insert into diskquota.quota_config values(%u,%d,%ld);",
 						 targetoid, type, quota_limit_mb);
+		debug_query_string = buf.data;
 		ret = SPI_execute(buf.data, false, 0);
 		if (ret != SPI_OK_INSERT)
 			elog(ERROR, "cannot insert into quota setting table, error code %d", ret);
@@ -803,6 +815,7 @@ set_quota_config_internal(Oid targetoid, int64 quota_limit_mb, QuotaType type)
 						 "delete from diskquota.quota_config where targetoid=%u"
 						 " and quotatype=%d;",
 						 targetoid, type);
+		debug_query_string = buf.data;
 		ret = SPI_execute(buf.data, false, 0);
 		if (ret != SPI_OK_DELETE)
 			elog(ERROR, "cannot delete item from quota setting table, error code %d", ret);
@@ -814,6 +827,7 @@ set_quota_config_internal(Oid targetoid, int64 quota_limit_mb, QuotaType type)
 						 "update diskquota.quota_config set quotalimitMB = %ld where targetoid=%u"
 						 " and quotatype=%d;",
 						 quota_limit_mb, targetoid, type);
+		debug_query_string = buf.data;
 		ret = SPI_execute(buf.data, false, 0);
 		if (ret != SPI_OK_UPDATE)
 			elog(ERROR, "cannot update quota setting table, error code %d", ret);
@@ -823,6 +837,7 @@ set_quota_config_internal(Oid targetoid, int64 quota_limit_mb, QuotaType type)
 	 * And finish our transaction.
 	 */
 	SPI_finish();
+	debug_query_string = NULL;
 	return;
 }
 
@@ -848,6 +863,7 @@ set_target_internal(Oid primaryoid, Oid spcoid, int64 quota_limit_mb, QuotaType 
 	 */
 	SPI_connect();
 
+	debug_query_string = buf.data;
 	ret = SPI_execute(buf.data, true, 0);
 	if (ret != SPI_OK_SELECT)
 		elog(ERROR, "cannot select target setting table: error code %d", ret);
@@ -859,6 +875,7 @@ set_target_internal(Oid primaryoid, Oid spcoid, int64 quota_limit_mb, QuotaType 
 		appendStringInfo(&buf,
 						 "insert into diskquota.target values(%d,%u,%u)",
 						  type, primaryoid, spcoid);
+		debug_query_string = buf.data;
 		ret = SPI_execute(buf.data, false, 0);
 		if (ret != SPI_OK_INSERT)
 			elog(ERROR, "cannot insert into quota setting table, error code %d", ret);
@@ -870,6 +887,7 @@ set_target_internal(Oid primaryoid, Oid spcoid, int64 quota_limit_mb, QuotaType 
 						 "delete from diskquota.target where primaryOid=%u"
 						 " and tablespaceOid=%u;",
 						 primaryoid, spcoid);
+		debug_query_string = buf.data;
 		ret = SPI_execute(buf.data, false, 0);
 		if (ret != SPI_OK_DELETE)
 			elog(ERROR, "cannot delete item from target setting table, error code %d", ret);
@@ -879,6 +897,7 @@ set_target_internal(Oid primaryoid, Oid spcoid, int64 quota_limit_mb, QuotaType 
 	 * And finish our transaction.
 	 */
 	SPI_finish();
+	debug_query_string = NULL;
 	return;
 }
 
@@ -1100,6 +1119,7 @@ set_per_segment_quota(PG_FUNCTION_ARGS)
 	appendStringInfo(&buf,
 			"SELECT true FROM diskquota.target as t, diskquota.quota_config as q WHERE tablespaceOid = %u AND (t.quotaType = %d OR t.quotaType = %d) AND t.primaryOid = q.targetOid AND t.quotaType = q.quotaType", spcoid, NAMESPACE_TABLESPACE_QUOTA, ROLE_TABLESPACE_QUOTA);
 
+	debug_query_string = buf.data;
 	ret = SPI_execute(buf.data, true, 0);
 	if (ret != SPI_OK_SELECT)
 		elog(ERROR, "cannot select target and quota setting table: error code %d", ret);
@@ -1114,6 +1134,7 @@ set_per_segment_quota(PG_FUNCTION_ARGS)
 	/*
 	 * UPDATEA NAMESPACE_TABLESPACE_PERSEG_QUOTA AND ROLE_TABLESPACE_PERSEG_QUOTA config for this tablespace
 	 */
+	debug_query_string = buf.data;
 	ret = SPI_execute(buf.data, false, 0);
 	if (ret != SPI_OK_UPDATE)
 		elog(ERROR, "cannot update item from quota setting table, error code %d", ret);
@@ -1121,6 +1142,7 @@ set_per_segment_quota(PG_FUNCTION_ARGS)
 	 * And finish our transaction.
 	 */
 	SPI_finish();
+	debug_query_string = NULL;
 	PG_RETURN_VOID();
 }
 
@@ -1137,8 +1159,11 @@ get_ext_major_version(void)
 	Datum		dat;
 	bool		isnull;
 	char		*extversion;
+	const char  *sql;
 
-	ret = SPI_execute("select COALESCE(extversion,'') from pg_extension where extname = 'diskquota'", true, 0);
+	sql = "select COALESCE(extversion,'') from pg_extension where extname = 'diskquota'";
+	debug_query_string = sql;
+	ret = SPI_execute(sql, true, 0);
 	if (ret != SPI_OK_SELECT)
 		ereport(ERROR,
 				(errcode(ERRCODE_INTERNAL_ERROR),
@@ -1160,6 +1185,8 @@ get_ext_major_version(void)
 				(errcode(ERRCODE_INTERNAL_ERROR),
 				errmsg("[diskquota] can not get diskquota extesion version")));
 	extversion =  TextDatumGetCString(dat);
+	debug_query_string = NULL;
+
 	if (extversion)
 	{
 		return (int)strtol(extversion, (char **) NULL, 10);
@@ -1208,6 +1235,7 @@ get_rel_oid_list(void)
 			" where oid >= %u and (relkind='r' or relkind='m')",
 			FirstNormalObjectId);
 
+	debug_query_string = buf.data;
 	ret = SPI_execute(buf.data, false, 0);
 	if (ret != SPI_OK_SELECT)
 		elog(ERROR, "cannot fetch in pg_class. error code %d", ret);
@@ -1236,6 +1264,8 @@ get_rel_oid_list(void)
 			list_free(indexIds);
 		}
 	}
+
+	debug_query_string = NULL;
 	return oidlist;
 }
 

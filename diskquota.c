@@ -612,6 +612,7 @@ start_workers_from_dblist(void)
 	int			num = 0;
 	int			ret;
 	int			i;
+	const char *sql;
 
 	/*
 	 * Don't catch errors in start_workers_from_dblist. Since this is the
@@ -623,7 +624,9 @@ start_workers_from_dblist(void)
 	ret = SPI_connect();
 	if (ret != SPI_OK_CONNECT)
 		ereport(ERROR, (errmsg("[diskquota launcher] SPI connect error, errno:%d", errno)));
-	ret = SPI_execute("select dbid from diskquota_namespace.database_list;", true, 0);
+	sql = "select dbid from diskquota_namespace.database_list;";
+	debug_query_string = sql;
+	ret = SPI_execute(sql, true, 0);
 	if (ret != SPI_OK_SELECT)
 		ereport(ERROR, (errmsg("select diskquota_namespace.database_list")));
 	tupdesc = SPI_tuptable->tupdesc;
@@ -666,6 +669,7 @@ start_workers_from_dblist(void)
 	SPI_finish();
 	PopActiveSnapshot();
 	CommitTransactionCommand();
+	debug_query_string = NULL;
 
 	/* TODO: clean invalid database */
 }
@@ -908,12 +912,14 @@ del_dbid_from_database_list(Oid dbid)
 	appendStringInfo(&str, "delete from diskquota_namespace.database_list where dbid=%u;", dbid);
 
 	/* errors will be cached in outer function */
+	debug_query_string = str.data;
 	ret = SPI_execute(str.data, false, 0);
 	if (ret != SPI_OK_DELETE)
 	{
 		ereport(ERROR, (errmsg("[diskquota launcher] SPI_execute sql:'%s', errno:%d", str.data, errno)));
 	}
 	pfree(str.data);
+	debug_query_string = NULL;
 }
 
 /*

@@ -27,6 +27,7 @@
 #include "funcapi.h"
 #include "storage/ipc.h"
 #include "port/atomics.h"
+#include "tcop/utility.h"
 #include "utils/builtins.h"
 #include "utils/guc.h"
 #include "utils/faultinjector.h"
@@ -611,6 +612,7 @@ do_check_diskquota_state_is_ready(void)
 	int			ret;
 	TupleDesc	tupdesc;
 	int			i;
+	const char *sql;
 	StringInfoData sql_command;
 
 	initStringInfo(&sql_command);
@@ -618,6 +620,7 @@ do_check_diskquota_state_is_ready(void)
 	appendStringInfo(&sql_command, 
 					"SELECT diskquota.diskquota_fetch_table_stat(%d, ARRAY[]::oid[]) "
 					"FROM gp_dist_random('gp_id');", ADD_DB_TO_MONITOR);
+	debug_query_string = sql_command.data;
 	ret = SPI_execute(sql_command.data, true, 0);
 	if (ret != SPI_OK_SELECT) {
 		pfree(sql_command.data);
@@ -631,7 +634,9 @@ do_check_diskquota_state_is_ready(void)
 	 * check diskquota state from table diskquota.state errors will be catch
 	 * at upper level function.
 	 */
-	ret = SPI_execute("select state from diskquota.state", true, 0);
+	sql = "select state from diskquota.state";
+	debug_query_string = sql;
+	ret = SPI_execute(sql, true, 0);
 	if (ret != SPI_OK_SELECT)
 		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
 						errmsg("[diskquota] check diskquota state SPI_execute failed: error code %d", ret)));
@@ -665,6 +670,7 @@ do_check_diskquota_state_is_ready(void)
 	}
 	ereport(WARNING, (errmsg("Diskquota is not in ready state. "
 							 "please run UDF init_table_size_table()")));
+	debug_query_string = NULL;
 
 	return false;
 }
@@ -1126,6 +1132,7 @@ flush_to_table_size(void)
 						(errcode(ERRCODE_INTERNAL_ERROR),
 						errmsg("[diskquota] unknown diskquota extension version: %d", extMajorVersion)));
 		}
+		debug_query_string = delete_statement.data;
 		ret = SPI_execute(delete_statement.data, false, 0);
 		if (ret != SPI_OK_DELETE)
 			ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
@@ -1133,12 +1140,14 @@ flush_to_table_size(void)
 	}
 	if (insert_statement_flag)
 	{
+		debug_query_string = insert_statement.data;
 		ret = SPI_execute(insert_statement.data, false, 0);
 		if (ret != SPI_OK_INSERT)
 			ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
 							errmsg("[diskquota] flush_to_table_size SPI_execute failed: error code %d", ret)));
 	}
 
+	debug_query_string = NULL;
 	optimizer = old_optimizer;
 }
 
@@ -1336,10 +1345,11 @@ load_quotas(void)
 static void
 do_load_quotas(void)
 {
-	int		ret;
+	int			ret;
 	TupleDesc	tupdesc;
-	int		i;
-	int		extMajorVersion;
+	int			i;
+	int			extMajorVersion;
+	const char *sql;
 
 	/*
 	 * TODO: we should skip to reload quota config when there is no change in
@@ -1367,13 +1377,17 @@ do_load_quotas(void)
 	switch (extMajorVersion)
 	{
 		case 1:
-			ret = SPI_execute("select targetoid, quotatype, quotalimitMB, 0 as segratio, 0 as tablespaceoid from diskquota.quota_config", true, 0);
+			sql = "select targetoid, quotatype, quotalimitMB, 0 as segratio, 0 as tablespaceoid from diskquota.quota_config";
+			debug_query_string = sql;
+			ret = SPI_execute(sql, true, 0);
 			break;
 		case 2:
-			ret = SPI_execute(
-					"SELECT c.targetOid, c.quotaType, c.quotalimitMB, COALESCE(c.segratio, 0) AS segratio, COALESCE(t.tablespaceoid, 0) AS tablespaceoid "
-					"FROM diskquota.quota_config AS c LEFT OUTER JOIN diskquota.target AS t "
-					"ON c.targetOid = t.primaryOid and c.quotaType = t.quotaType", true, 0);
+			sql = "SELECT c.targetOid, c.quotaType, c.quotalimitMB, COALESCE(c.segratio, 0) AS segratio, COALESCE(t"
+				  ".tablespaceoid, 0) AS tablespaceoid "
+				  "FROM diskquota.quota_config AS c LEFT OUTER JOIN diskquota.target AS t "
+				  "ON c.targetOid = t.primaryOid and c.quotaType = t.quotaType";
+			debug_query_string = sql;
+			ret = SPI_execute(sql, true, 0);
 			break;
 		default:
 			ereport(ERROR,
@@ -1435,6 +1449,7 @@ do_load_quotas(void)
 		}
 	}
 
+	debug_query_string = NULL;
 	return;
 }
 
