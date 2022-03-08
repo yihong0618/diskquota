@@ -17,6 +17,10 @@ def create_tables(db, num_tables, num_rows_per_table):
         CREATE TABLE t1 (pk int, val int)
         DISTRIBUTED BY (pk)
         PARTITION BY RANGE (pk) (START (1) END ({num_tables}) INCLUSIVE EVERY (1));
+
+        INSERT INTO t1 
+        SELECT pk, val
+        FROM generate_series(1, {num_rows_per_table}) AS val, generate_series(1, {num_tables}) AS pk;
     "''')
 
 def init_table_size(db):
