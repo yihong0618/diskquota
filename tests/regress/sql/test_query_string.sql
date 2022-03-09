@@ -1,9 +1,9 @@
 \! gpconfig -c "log_statement" -v "all" > /dev/null
+\! gpstop -u > /dev/null
+\! gpconfig --show log_statement
 
 SELECT pg_logfile_rotate();
 SELECT pg_logfile_rotate() FROM gp_dist_random('gp_id');
-
-\! gpstop -u > /dev/null
 
 CREATE SCHEMA s1;
 SET search_path TO s1;
