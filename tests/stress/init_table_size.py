@@ -2,17 +2,10 @@
 #
 # Init diskquota.table_size when the number of tables is very large
 
-from subprocess import run, PIPE, STDOUT
+from __utils__ import *
 
-def db_exec(db, command):
-    run(['time', 'psql', db, '-c', command])
-
-def create_extension(db):
-    db_exec(db, f'''"
-        CREATE EXTENSION diskquota;
-    "''')
-
-def create_tables(db, num_tables, num_rows_per_table):
+def run(db, num_tables, num_rows_per_table):
+    db_clear(db)
     db_exec(db, f'''"
         CREATE TABLE t1 (pk int, val int)
         DISTRIBUTED BY (pk)
@@ -22,8 +15,4 @@ def create_tables(db, num_tables, num_rows_per_table):
         SELECT pk, val
         FROM generate_series(1, {num_rows_per_table}) AS val, generate_series(1, {num_tables}) AS pk;
     "''')
-
-def init_table_size(db):
-    db_exec(db, f'''"
-        SELECT diskquota.init_table_size_table();
-    "''')
+    db_exec(db, '"SELECT diskquota.init_table_size_table();"')

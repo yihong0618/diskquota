@@ -2,17 +2,10 @@
 #
 # Writing data to a large number of tables
 
-from subprocess import run, PIPE, STDOUT
+from __utils__ import *
 
-def db_exec(db, command):
-    run(['time', 'psql', db, '-c', command])
-
-def create_extension(db):
-    db_exec(db, f'''"
-        CREATE EXTENSION diskquota;
-    "''')
-
-def create_tables(db, num_tables, num_rows_per_table):
+def run(db, num_tables, num_rows_per_table):
+    db_clear(db)
     db_exec(db, f'''"
         CREATE TABLE t1 (pk int, val int)
         DISTRIBUTED BY (pk)

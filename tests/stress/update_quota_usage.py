@@ -2,28 +2,22 @@
 #
 # Update quota usage when the number of possible quota definition is large
 
-from subprocess import run, PIPE, STDOUT
+import subprocess as sp
+from __utils__ import *
 
-def db_exec(db, command):
-    run(['time', 'psql', db, '-c', command])
-
-def create_extension(db):
-    db_exec(db, f'''"
-        CREATE EXTENSION diskquota;
-    "''')
-
-def create_tables(db, num_tables):
+def run(db, num_tables, num_tablespaces):
+    db_clear(db)
+    for i in range(num_tablespaces):
+        sp.run(['mkdir', '-p', f'/tmp/dir_{i}'])
+        db_exec(db, f"CREATE TABLESPACE tablespace_{i} LOCATION '/tmp/dir_{i}';")
     for i in range(num_tables):
-        run(['mkdir', '-p', '/tmp/dir_for_table_{i}'])
         db_exec(db, f'''"
             CREATE SCHMEA schema_for_table_{i};
             CREATE ROLE role_for_table_{i};
-            CREATE TABLESPACE tablespace_for_table_{i} LOCATION '/tmp/dir_for_table{i}';
 
             SET ROLE role_for_table_{i};
             CREATE TABLE schema_for_table_{i}.table_{i} (i int) DISTRIBUTED BY (i)
-            TABLESPACE tablespace_for_table_{i};
+            TABLESPACE tablespace_{i % num_tablespaces};
         "''')
-
-def wait_for_new_epoch(db):
     db_exec(db, '"SELECT diskquota.wait_for_worker_new_epoch();"')
+

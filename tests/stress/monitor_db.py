@@ -2,21 +2,16 @@
 #
 # Monitoring a large number of databases with active tables
 
-from subprocess import run, PIPE, STDOUT
+import subprocess as sp
+from __utils__ import *
 
-def db_exec(db, command):
-    run(['time', 'psql', db, '-c', command])
-
-def create_extension(num_dbs):
+def run(db_prefix, num_dbs, num_tables, num_rows_per_table):
     # +20 to make room for internal background processes and debugging connections
-    run(['gpconfig', '-c', 'max_connections', '-v', f'{num_dbs + 20}'])
-    run(['gpconfig', '-c', 'max_worker_processes', '-v', f'{num_dbs + 20}'])
+    sp.run(['gpconfig', '-c', 'max_connections', '-v', f'{num_dbs + 20}'])
+    sp.run(['gpconfig', '-c', 'max_worker_processes', '-v', f'{num_dbs + 20}'])
+    sp.run(['gpstop', '-far'])
     for i in range(num_dbs):
-        db_exec(f'db_{i}', f'''"
-            CREATE EXTENSION diskquota;
-        "''')
-
-def create_tables(num_dbs, num_tables, num_rows_per_table):
+        db_clear(f'{db_prefix}_{i}')
     for i in range(num_dbs):
         db_exec(f'db_{i}', f'''"
             CREATE TABLE t1 (pk int, val int)
