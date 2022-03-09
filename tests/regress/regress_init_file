@@ -16,4 +16,5 @@ s/ERROR:  tablespace:\d+ schema:\d+ diskquota exceeded.*/[hardlimit] tablespace-
 -- start_matchignore
 m/\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{6} [A-Z]{3},/
 m/"[a-z]+\.c",\d+,$/
+m/.*"COptTasks\.cpp",\d+,$/
 -- end_matchignore
