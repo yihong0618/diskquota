@@ -1,12 +1,10 @@
-#!/usr/bin/env python3
-#
 # Update quota usage when the number of possible quota definition is large
 
 import subprocess as sp
 from __utils__ import *
 
 def run(db, num_tables, num_tablespaces):
-    db_clear(db)
+    db_clean(db)
     for i in range(num_tablespaces):
         sp.run(['mkdir', '-p', f'/tmp/dir_{i}'])
         db_exec(db, f"CREATE TABLESPACE tablespace_{i} LOCATION '/tmp/dir_{i}';")

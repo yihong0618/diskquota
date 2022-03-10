@@ -9,5 +9,5 @@ Each script in this directory identifies one potential performance bottleneck an
 
 To run the tests, do in the root directory:
 ```bash
-$ PYTHONPATH=/usr/lib/python3.6 python3 -m tests.stress <test_case> --<arg1_name>=<arg1_val> --<arg2_name>=<arg2_val> ...
+$ PYTHONPATH='' python3 -m tests.stress <test_case> --<arg1_name>=<arg1_val> --<arg2_name>=<arg2_val> ...
 ```
