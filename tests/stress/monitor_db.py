@@ -1,6 +1,5 @@
 # Monitoring a large number of databases with active tables
 
-import subprocess as sp
 from __utils__ import *
 
 def run(db_prefix, num_dbs, num_tables, num_rows_per_table):
