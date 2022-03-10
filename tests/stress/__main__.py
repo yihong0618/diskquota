@@ -1,22 +1,29 @@
 from argparse import ArgumentParser
-import sys
 from importlib import import_module
 from inspect import signature
+
+import os.path
+import sys
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, HERE)
 
 def main():
     parser = ArgumentParser(description='Stress testing for Diskquota')
 
     # Test case is the first positional argument
     parser.add_argument('test_case')
-    args = parser.parse_known_args(sys.argv)
+    args, unknowns = parser.parse_known_args()
 
-    # Import module dynamically according to the argument
-    test_case = import_module(args['test_case'])
+    # Import module dynamically based on the argument
+    print(args)
+    test_case = import_module(args.test_case)
 
-    # Parse args of the run() function
-    for arg in signature.parameters(test_case.run):
+    # Parse args of the run() function of the test case
+    parser = ArgumentParser()
+    for arg in signature(test_case.run).parameters:
         parser.add_argument(f'--{arg}', required=True)
-    args = parser.parse_args(sys.argv)
+    args = parser.parse_args(unknowns)
 
     # Call the run() function to do the job
     test_case.run(**vars(args))

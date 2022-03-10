@@ -13,7 +13,7 @@ def run(db_prefix, num_dbs, num_tables, num_rows_per_table):
     for i in range(num_dbs):
         db_clear(f'{db_prefix}_{i}')
     for i in range(num_dbs):
-        db_exec(f'db_{i}', f'''"
+        db_exec(f'db_{i}', f'''
             CREATE TABLE t1 (pk int, val int)
             DISTRIBUTED BY (pk)
             PARTITION BY RANGE (pk) (START (1) END ({num_tables}) INCLUSIVE EVERY (1));
@@ -21,4 +21,4 @@ def run(db_prefix, num_dbs, num_tables, num_rows_per_table):
             INSERT INTO t1 
             SELECT pk, val
             FROM generate_series(1, {num_rows_per_table}) AS val, generate_series(1, {num_tables}) AS pk;
-        "''')
+        ''')

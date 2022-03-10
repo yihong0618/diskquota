@@ -7,7 +7,7 @@ This directory contains scripts for testing the behavior of Diskquota under heav
 
 Each script in this directory identifies one potential performance bottleneck and contains code to evaluate its impact.
 
-To run the tests, do 
+To run the tests, do in the root directory:
 ```bash
-$ python3 -m stress <test_case> --<arg1_name> <arg1> --<arg2_name> <arg2> ...
+$ PYTHONPATH=/usr/lib/python3.6 python3 -m tests.stress <test_case> --<arg1_name>=<arg1_val> --<arg2_name>=<arg2_val> ...
 ```
