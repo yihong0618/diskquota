@@ -3,7 +3,7 @@
 import subprocess as sp
 from __utils__ import *
 
-def run(db: int, num_tables: int, num_tablespaces: int):
+def run(db: str, num_tables: int, num_tablespaces: int):
     db_clean(db)
     for i in range(num_tablespaces):
         sp.run(['mkdir', '-p', f'/tmp/dir_{i}'])
