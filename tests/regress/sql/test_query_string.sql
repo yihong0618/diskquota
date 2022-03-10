@@ -5,6 +5,12 @@
 SELECT pg_logfile_rotate();
 SELECT pg_logfile_rotate() FROM gp_dist_random('gp_id');
 
+DROP DATABASE IF EXISTS query_string_db13;
+CREATE DATABASE query_string_db13;
+\c query_string_db13
+
+CREATE EXTENSION diskquota;
+
 CREATE SCHEMA s1;
 SET search_path TO s1;
 
@@ -27,4 +33,19 @@ SELECT diskquota.wait_for_worker_new_epoch();
 RESET SEARCH_PATH;
 DROP SCHEMA s1 CASCADE;
 
-\! ./data/find_latest_log.sh
+SET SEARCH_PATH TO gp_toolkit;
+
+SELECT DISTINCT on (x) regexp_replace(logmessage, '(-)?\d+', '', 'g') as x
+FROM gp_toolkit.gp_log_database
+WHERE logmessage LIKE 'statement: %';
+
+RESET SEARCH_PATH;
+
+DROP EXTENSION diskquota;
+
+\c contrib_regression
+DROP DATABASE query_string_db13;
+
+\! gpconfig -c log_statement -m 'all' -v 'none' > /dev/null
+\! gpstop -u > /dev/null
+\! gpconfig --show log_statement
