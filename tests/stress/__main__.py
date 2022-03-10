@@ -22,8 +22,10 @@ def main():
     # Parse args of the run() function of the test case
     parser = ArgumentParser()
     params = signature(test_case.run).parameters
-    for arg in params:
-        parser.add_argument(f'--{arg}', required=True, type=params[arg].annotation)
+    for arg_name in params:
+        arg_required = params[arg_name].default is params[arg_name].empty
+        arg_type = params[arg_name]
+        parser.add_argument(f'--{arg_name}', required=arg_required, type=arg_type)
     args = parser.parse_args(unknowns)
 
     # Call the run() function to do the job
