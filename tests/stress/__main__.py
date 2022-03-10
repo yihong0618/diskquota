@@ -24,7 +24,7 @@ def main():
     params = signature(test_case.run).parameters
     for arg_name in params:
         arg_required = params[arg_name].default is params[arg_name].empty
-        arg_type = params[arg_name]
+        arg_type = params[arg_name].annotation
         parser.add_argument(f'--{arg_name}', required=arg_required, type=arg_type)
     args = parser.parse_args(unknowns)
 
