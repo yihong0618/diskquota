@@ -2,7 +2,7 @@
 
 from __utils__ import *
 
-def run(db_prefix, num_dbs, num_tables, num_rows_per_table):
+def run(db_prefix: str, num_dbs: int, num_tables: int, num_rows_per_table: int):
     # +20 to make room for internal background processes and debugging connections
     gp_run(['gpconfig', '-c', 'max_connections', '-v', f'{num_dbs + 20}'])
     gp_run(['gpconfig', '-c', 'max_worker_processes', '-v', f'{num_dbs + 20}'])

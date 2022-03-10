@@ -2,7 +2,7 @@
 
 from __utils__ import *
 
-def run(db, num_tables, num_rows_per_table):
+def run(db: str, num_tables: int, num_rows_per_table: int):
     db_clean(db)
     db_exec(db, f'''
         CREATE TABLE t1 (pk int, val int)
