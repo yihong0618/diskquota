@@ -1,12 +1,13 @@
 # Update quota usage when the number of possible quota definition is large
 
-import subprocess as sp
 from __utils__ import *
 
-def run(db: str, num_tables: int, num_tablespaces: int):
+def run(db: str, num_tables: int, num_tablespaces: int, enable_diskquota: bool):
     db_clean(db)
+    if enable_diskquota:
+        db_enable_diskquota(db)
     for i in range(num_tablespaces):
-        sp.run(['mkdir', '-p', f'/tmp/dir_{i}'])
+        gp_run(['mkdir', '-p', f'/tmp/dir_{i}'])
         db_exec(db, f"CREATE TABLESPACE tablespace_{i} LOCATION '/tmp/dir_{i}';")
     for i in range(num_tables):
         db_exec(db, f'''
