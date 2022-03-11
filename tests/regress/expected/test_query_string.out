@@ -67,7 +67,13 @@ SELECT diskquota.wait_for_worker_new_epoch();
 RESET SEARCH_PATH;
 DROP SCHEMA s1 CASCADE;
 SET SEARCH_PATH TO gp_toolkit;
-SELECT DISTINCT on (x) regexp_replace(logmessage, '(-)?\d+', '', 'g') as x
+SELECT DISTINCT on (x) regexp_replace(
+  regexp_replace(
+    regexp_replace(
+      regexp_replace(logmessage, '(-)?\d+', '', 'g'),
+      '(\(,\)(,)?\s*)+', 'value', 'g'),
+    '\{(,)+\}', '{}', 'g'),
+  '(\(,+\)(, )?)+', '()', 'g') as x
 FROM gp_toolkit.gp_log_database
 WHERE logmessage LIKE 'statement: %';
                                                                                                                                         x                                                                                                                                        
@@ -113,12 +119,9 @@ WHERE logmessage LIKE 'statement: %';
  statement: DROP EXTENSION diskquota;
  statement: DROP SCHEMA s CASCADE;
  statement: DROP TABLE IF EXISTS a;
- statement: INSERT INTO a SELECT generate_series(,);
- statement: insert into diskquota.quota_config values(,,);
- statement: insert into diskquota.table_size values (,,), (,,), (,,), (,,), (,,), (,,), (,,), (,,), (,,), (,,), (,,), (,,), (,,), (,,), (,,), (,,), (,,), (,,), (,,), (,,);
- statement: insert into diskquota.table_size values (,,), (,,), (,,), (,,), (,,), (,,), (,,), (,,), (,,), (,,), (,,), (,,);
- statement: insert into diskquota.table_size values (,,), (,,), (,,), (,,), (,,), (,,), (,,), (,,);
- statement: insert into diskquota.table_size values (,,), (,,), (,,), (,,);
+ statement: INSERT INTO a SELECT generate_seriesvalue;
+ statement: insert into diskquota.quota_config values();
+ statement: insert into diskquota.table_size values ();
  statement: mppexec
  statement: RESET search_path
  statement: RESET SEARCH_PATH;
@@ -130,24 +133,27 @@ WHERE logmessage LIKE 'statement: %';
  statement: SELECT DISTINCT on (x) regexp_replace(logmessage, '(-)?\d+', '', 'g') as x                                                                                                                                                                                          +
  FROM gp_toolkit.gp_log_database                                                                                                                                                                                                                                                +
  WHERE logmessage LIKE 'statement: %';
- statement: SELECT DISTINCT on (x) regexp_replace(logmessage, '\d+', '', 'g') as x                                                                                                                                                                                              +
+ statement: SELECT DISTINCT on (x) regexp_replace(                                                                                                                                                                                                                              +
+   regexp_replace(                                                                                                                                                                                                                                                              +
+     regexp_replace(                                                                                                                                                                                                                                                            +
+       regexp_replace(logmessage, '(-)?\d+', '', 'g'),                                                                                                                                                                                                                          +
+       '(\(,\)value?\s*)+', 'value', 'g'),                                                                                                                                                                                                                                      +
+     '\{value+\}', '{}', 'g'),                                                                                                                                                                                                                                                  +
+   '(\(,+\)(, )?)+', '()', 'g') as x                                                                                                                                                                                                                                            +
  FROM gp_toolkit.gp_log_database                                                                                                                                                                                                                                                +
  WHERE logmessage LIKE 'statement: %';
- statement: SELECT DISTINCT on (x) regexp_replace(logmessage, '\d+', '', 'g') as x                                                                                                                                                                                              +
+ statement: SELECT DISTINCT on (x) regexp_replace(regexp_replace(regexp_replace(                                                                                                                                                                                                +
+   regexp_replace(logmessage, '(-)?\d+', '', 'g'),                                                                                                                                                                                                                              +
+   '(\(,\)value?\s*)+', 'value', 'g'), '\{value+\}', '{}', 'g'),                                                                                                                                                                                                                +
+                                       '(\(,+\)(, )?)+', '()', 'g') as x                                                                                                                                                                                                        +
  FROM gp_toolkit.gp_log_database                                                                                                                                                                                                                                                +
- WHERE logmessage LIKE 'statement: %' ORDER BY logtime;
- statement: select * from diskquota.diskquota_fetch_table_stat(, '{,,,,}'::oid[])
- statement: select * from diskquota.diskquota_fetch_table_stat(, '{,,}'::oid[])
- statement: select * from diskquota.diskquota_fetch_table_stat(, '{,}'::oid[])
+ WHERE logmessage LIKE 'statement: %';
  statement: select * from diskquota.diskquota_fetch_table_stat(, '{}'::oid[])
  statement: select indcheckxmin from pg_catalog.pg_index where indexrelid = ''
  statement: select pg_catalog.gp_acquire_sample_rows(, , 'f');
  statement: select pg_catalog.pg_highest_oid()
  statement: select pg_catalog.pg_relation_size(, 'main')
  statement: SELECT pg_sleep();
- statement: SELECT regexp_replace(logmessage, '\d+', '', 'g')                                                                                                                                                                                                                   +
- FROM gp_toolkit.gp_log_database                                                                                                                                                                                                                                                +
- WHERE logmessage LIKE 'statement: %' ORDER BY logsegment, logtime;
  statement: select state from diskquota.state
  statement: select tableid, size, segid from diskquota.table_size
  statement: select true from diskquota.quota_config where targetoid =  and quotatype =
@@ -157,11 +163,8 @@ WHERE logmessage LIKE 'statement: %';
  statement: SET search_path TO 's'
  statement: SET search_path TO s;
  statement: SET search_path TO '$user', 'public'
- statement: WITH deleted_table AS ( VALUES (,), (,), (,), (,), (,), (,), (,), (,), (,), (,), (,), (,), (,), (,), (,), (,), (,), (,), (,), (,))delete from diskquota.table_size where (tableid, segid) in ( SELECT * FROM deleted_table );
- statement: WITH deleted_table AS ( VALUES (,), (,), (,), (,), (,), (,), (,), (,), (,), (,), (,), (,))delete from diskquota.table_size where (tableid, segid) in ( SELECT * FROM deleted_table );
- statement: WITH deleted_table AS ( VALUES (,), (,), (,), (,), (,), (,), (,), (,))delete from diskquota.table_size where (tableid, segid) in ( SELECT * FROM deleted_table );
- statement: WITH deleted_table AS ( VALUES (,), (,), (,), (,))delete from diskquota.table_size where (tableid, segid) in ( SELECT * FROM deleted_table );
-(47 rows)
+ statement: WITH deleted_table AS ( VALUES value)delete from diskquota.table_size where (tableid, segid) in ( SELECT * FROM deleted_table );
+(37 rows)
 
 RESET SEARCH_PATH;
 DROP EXTENSION diskquota;

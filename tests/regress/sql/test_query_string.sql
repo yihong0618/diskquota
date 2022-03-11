@@ -35,7 +35,13 @@ DROP SCHEMA s1 CASCADE;
 
 SET SEARCH_PATH TO gp_toolkit;
 
-SELECT DISTINCT on (x) regexp_replace(logmessage, '(-)?\d+', '', 'g') as x
+SELECT DISTINCT on (x) regexp_replace(
+  regexp_replace(
+    regexp_replace(
+      regexp_replace(logmessage, '(-)?\d+', '', 'g'),
+      '(\(,\)(,)?\s*)+', 'value', 'g'),
+    '\{(,)+\}', '{}', 'g'),
+  '(\(,+\)(, )?)+', '()', 'g') as x
 FROM gp_toolkit.gp_log_database
 WHERE logmessage LIKE 'statement: %';
 
