@@ -7,7 +7,12 @@ project(diskquota)
 # generate 'compile_commands.json'
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+# Retrieve repository information
+include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/Git.cmake)
+GitHash_Get(DISKQUOTA_GIT_HASH)
+
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/Gpdb.cmake)
+
 
 # set include directories for all sub-projects
 include_directories(${PG_INCLUDE_DIR_SERVER})
@@ -38,13 +43,12 @@ else()
       "diskquota-${DISKQUOTA_MAJOR_VERSION}.${DISKQUOTA_MINOR_VERSION}")
 endif()
 
-set(CMAKE_C_FLAGS
-    "${CMAKE_C_FLAGS} \
-	-DDISKQUOTA_VERSION='\"${DISKQUOTA_VERSION}\"' \
-	-DDISKQUOTA_MAJOR_VERSION=${DISKQUOTA_MAJOR_VERSION} \
-	-DDISKQUOTA_MINOR_VERSION=${DISKQUOTA_MINOR_VERSION} \
-	-DDISKQUOTA_PATCH_VERSION=${DISKQUOTA_PATCH_VERSION} \
-	-DDISKQUOTA_BINARY_NAME='\"${DISKQUOTA_BINARY_NAME}\"'")
+add_compile_definitions(
+  DISKQUOTA_VERSION="${DISKQUOTA_VERSION}"
+  DISKQUOTA_MAJOR_VERSION=${DISKQUOTA_MAJOR_VERSION}
+  DISKQUOTA_MINOR_VERSION=${DISKQUOTA_MINOR_VERSION}
+  DISKQUOTA_PATCH_VERSION=${DISKQUOTA_PATCH_VERSION}
+  DISKQUOTA_BINARY_NAME="${DISKQUOTA_BINARY_NAME}")
 
 list(
   APPEND
@@ -101,7 +105,20 @@ set(CPACK_PACKAGE_FILE_NAME
 include(CPack)
 # packing end
 
+# Create build-info
+# The diskquota-build-info shouldn't be copied to GPDB release by install_gpdb_component
+include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/BuildInfo.cmake)
+set(build_info_PATH ${CMAKE_CURRENT_BINARY_DIR}/diskquota-build-info)
+BuildInfo_Create(${build_info_PATH}
+  VARS
+  DISKQUOTA_GIT_HASH
+  DISKQUOTA_VERSION
+  GP_MAJOR_VERSION
+  GP_VERSION)
+# Create build-info end
+
 # NOTE: keep install part at the end of file, to overwrite previous binary
 install(PROGRAMS "cmake/install_gpdb_component" DESTINATION ".")
 install(FILES ${diskquota_DDL} DESTINATION "share/postgresql/extension/")
 install(TARGETS diskquota DESTINATION "lib/postgresql/")
+install(FILES ${build_info_PATH} DESTINATION ".")
