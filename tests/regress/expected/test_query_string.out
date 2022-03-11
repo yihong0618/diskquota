@@ -19,10 +19,10 @@ SELECT pg_logfile_rotate() FROM gp_dist_random('gp_id');
  t
 (3 rows)
 
-DROP DATABASE IF EXISTS query_string_db13;
-NOTICE:  database "query_string_db13" does not exist, skipping
-CREATE DATABASE query_string_db13;
-\c query_string_db13
+DROP DATABASE IF EXISTS query_string_db;
+NOTICE:  database "query_string_db" does not exist, skipping
+CREATE DATABASE query_string_db;
+\c query_string_db
 CREATE EXTENSION diskquota;
 CREATE SCHEMA s1;
 SET search_path TO s1;
@@ -67,109 +67,27 @@ SELECT diskquota.wait_for_worker_new_epoch();
 RESET SEARCH_PATH;
 DROP SCHEMA s1 CASCADE;
 SET SEARCH_PATH TO gp_toolkit;
-SELECT DISTINCT on (x) regexp_replace(
-  regexp_replace(
-    regexp_replace(
-      regexp_replace(logmessage, '(-)?\d+', '', 'g'),
-      '(\(,\)(,)?\s*)+', 'value', 'g'),
-    '\{(,)+\}', '{}', 'g'),
-  '(\(,+\)(, )?)+', '()', 'g') as x
+SELECT DISTINCT ON (diskquota_related) REGEXP_REPLACE(logmessage, '.*(diskquota\.[a-z_]+).*', '\1') AS diskquota_related
 FROM gp_toolkit.gp_log_database
-WHERE logmessage LIKE 'statement: %';
-                                                                                                                                        x                                                                                                                                        
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- statement: -- complain if script is sourced in psql, rather than via CREATE EXTENSION                                                                                                                                                                                          +
-                                                                                                                                                                                                                                                                                +
-                                                                                                                                                                                                                                                                                +
- CREATE SCHEMA diskquota;                                                                                                                                                                                                                                                       +
-                                                                                                                                                                                                                                                                                +
- CREATE TABLE diskquota.quota_config(                                                                                                                                                                                                                                           +
-         targetOid oid,                                                                                                                                                                                                                                                         +
-         quotatype int,                                                                                                                                                                                                                                                         +
-         quotalimitMB int,                                                                                                                                                                                                                                                      +
-         segratio float DEFAULT ,                                                                                                                                                                                                                                               +
-         PRIMARY KEY(targetOid, quotatype)                                                                                                                                                                                                                                      +
- ) DISTRIBUTED BY (targetOid, quotatype);                                                                                                                                                                                                                                       +
-                                                                                                                                                                                                                                                                                +
- CREATE TABLE diskquota.target (                                                                                                                                                                                                                                                +
-         quotatype int, --REFERENCES disquota.quota_config.quotatype,                                                                                                                                                                                                           +
-         primaryOid oid,                                                                                                                                                                                                                                                        +
-         tablespaceOid oid, --REFERENCES pg_tablespace.oid,                                                                                                                                                                                                                     +
-         PRIMARY KEY (primaryOid, tablespaceOid, quotatype)                                                                                                                                                                                                                     +
- );                                                                                                                                                                                                                                                                             +
-                                                                                                                                                                                                                                                                                +
- CREATE TABLE diskquota.table_size(                                                                                                                                                                                                                                             +
-         tableid oid,                                                                                                                                                                                                                                                           +
-         size bigint,                                                                                                                                                                                                                                                           +
-         segid smallint,                                                                                                                                                                                                                                                        +
-         PRIMARY KEY(tableid, segid)                                                                                                                                                                                                                                            +
- ) DISTRIBUTED BY (tableid, segid);                                                                                                                                                                                                                                             +
-                                                                                                                                                                                                                                                                                +
- CREATE TABLE diskquota.state(                                                                                                                                                                                                                                                  +
-         state int,                                                                                                                                                                                                                                                             +
-         PRIMARY KEY(state)                                                                                                                                                                                                                                                     +
- ) DISTRIBUTED BY (state);                                                                                                                                                                                                                                                      +
-                                                                                                                                                                                                                                                                                +
- -- diskquota.quota_config AND diskquota.target is dump-able, other table can be generate on fly                                                                                                                                                                                +
- SELECT pg_catalog.pg_extension_config_dump('diskquota.quota_config', '');                                                                                                                                                                                                      +
- SELECT gp_segment_id, pg_catalog.pg_extension_config_dump('diskquota.quota_config', '') FROM gp_dist_r
- statement: CREATE EXTENSION diskquota;
- statement: CREATE SCHEMA s;
- statement: CREATE TABLE a(i int) DISTRIBUTED BY (i);
- statement: DROP EXTENSION diskquota;
- statement: DROP SCHEMA s CASCADE;
- statement: DROP TABLE IF EXISTS a;
- statement: INSERT INTO a SELECT generate_seriesvalue;
- statement: insert into diskquota.quota_config values();
- statement: insert into diskquota.table_size values ();
- statement: mppexec
- statement: RESET search_path
- statement: RESET SEARCH_PATH;
- statement: SELECT c.targetOid, c.quotaType, c.quotalimitMB, COALESCE(c.segratio, ) AS segratio, COALESCE(t.tablespaceoid, ) AS tablespaceoid FROM diskquota.quota_config AS c LEFT OUTER JOIN diskquota.target AS t ON c.targetOid = t.primaryOid and c.quotaType = t.quotaType
- statement: SELECT diskquota.diskquota_fetch_table_stat(, ARRAY[]::oid[]) FROM gp_dist_random('gp_id');
- statement: SELECT diskquota.resume()
- statement: SELECT diskquota.set_schema_quota('s', ' MB');
- statement: SELECT diskquota.wait_for_worker_new_epoch();
- statement: SELECT DISTINCT on (x) regexp_replace(logmessage, '(-)?\d+', '', 'g') as x                                                                                                                                                                                          +
- FROM gp_toolkit.gp_log_database                                                                                                                                                                                                                                                +
- WHERE logmessage LIKE 'statement: %';
- statement: SELECT DISTINCT on (x) regexp_replace(                                                                                                                                                                                                                              +
-   regexp_replace(                                                                                                                                                                                                                                                              +
-     regexp_replace(                                                                                                                                                                                                                                                            +
-       regexp_replace(logmessage, '(-)?\d+', '', 'g'),                                                                                                                                                                                                                          +
-       '(\(,\)value?\s*)+', 'value', 'g'),                                                                                                                                                                                                                                      +
-     '\{value+\}', '{}', 'g'),                                                                                                                                                                                                                                                  +
-   '(\(,+\)(, )?)+', '()', 'g') as x                                                                                                                                                                                                                                            +
- FROM gp_toolkit.gp_log_database                                                                                                                                                                                                                                                +
- WHERE logmessage LIKE 'statement: %';
- statement: SELECT DISTINCT on (x) regexp_replace(regexp_replace(regexp_replace(                                                                                                                                                                                                +
-   regexp_replace(logmessage, '(-)?\d+', '', 'g'),                                                                                                                                                                                                                              +
-   '(\(,\)value?\s*)+', 'value', 'g'), '\{value+\}', '{}', 'g'),                                                                                                                                                                                                                +
-                                       '(\(,+\)(, )?)+', '()', 'g') as x                                                                                                                                                                                                        +
- FROM gp_toolkit.gp_log_database                                                                                                                                                                                                                                                +
- WHERE logmessage LIKE 'statement: %';
- statement: select * from diskquota.diskquota_fetch_table_stat(, '{}'::oid[])
- statement: select indcheckxmin from pg_catalog.pg_index where indexrelid = ''
- statement: select pg_catalog.gp_acquire_sample_rows(, , 'f');
- statement: select pg_catalog.pg_highest_oid()
- statement: select pg_catalog.pg_relation_size(, 'main')
- statement: SELECT pg_sleep();
- statement: select state from diskquota.state
- statement: select tableid, size, segid from diskquota.table_size
- statement: select true from diskquota.quota_config where targetoid =  and quotatype =
- statement: SET client_min_messages TO notice
- statement: SET search_path TO 'gp_toolkit'
- statement: SET SEARCH_PATH TO gp_toolkit;
- statement: SET search_path TO 's'
- statement: SET search_path TO s;
- statement: SET search_path TO '$user', 'public'
- statement: WITH deleted_table AS ( VALUES value)delete from diskquota.table_size where (tableid, segid) in ( SELECT * FROM deleted_table );
-(37 rows)
+WHERE logmessage LIKE '%diskquota.%'
+  AND logmessage NOT LIKE '%gp_toolkit%'
+  AND logtime >= NOW() - INTERVAL '1 min';
+          diskquota_related           
+--------------------------------------
+ diskquota.diskquota_fetch_table_stat
+ diskquota.quota_config
+ diskquota.resume
+ diskquota.set_schema_quota
+ diskquota.state
+ diskquota.table_size
+ diskquota.target
+ diskquota.wait_for_worker_new_epoch
+(8 rows)
 
 RESET SEARCH_PATH;
 DROP EXTENSION diskquota;
 \c contrib_regression
-DROP DATABASE query_string_db13;
+DROP DATABASE query_string_db;
 \! gpconfig -c log_statement -m 'all' -v 'none' > /dev/null
 \! gpstop -u > /dev/null
 \! gpconfig --show log_statement

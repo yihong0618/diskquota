@@ -5,9 +5,9 @@
 SELECT pg_logfile_rotate();
 SELECT pg_logfile_rotate() FROM gp_dist_random('gp_id');
 
-DROP DATABASE IF EXISTS query_string_db13;
-CREATE DATABASE query_string_db13;
-\c query_string_db13
+DROP DATABASE IF EXISTS query_string_db;
+CREATE DATABASE query_string_db;
+\c query_string_db
 
 CREATE EXTENSION diskquota;
 
@@ -35,22 +35,18 @@ DROP SCHEMA s1 CASCADE;
 
 SET SEARCH_PATH TO gp_toolkit;
 
-SELECT DISTINCT on (x) regexp_replace(
-  regexp_replace(
-    regexp_replace(
-      regexp_replace(logmessage, '(-)?\d+', '', 'g'),
-      '(\(,\)(,)?\s*)+', 'value', 'g'),
-    '\{(,)+\}', '{}', 'g'),
-  '(\(,+\)(, )?)+', '()', 'g') as x
+SELECT DISTINCT ON (diskquota_related) REGEXP_REPLACE(logmessage, '.*(diskquota\.[a-z_]+).*', '\1') AS diskquota_related
 FROM gp_toolkit.gp_log_database
-WHERE logmessage LIKE 'statement: %';
+WHERE logmessage LIKE '%diskquota.%'
+  AND logmessage NOT LIKE '%gp_toolkit%'
+  AND logtime >= NOW() - INTERVAL '1 min';
 
 RESET SEARCH_PATH;
 
 DROP EXTENSION diskquota;
 
 \c contrib_regression
-DROP DATABASE query_string_db13;
+DROP DATABASE query_string_db;
 
 \! gpconfig -c log_statement -m 'all' -v 'none' > /dev/null
 \! gpstop -u > /dev/null
