@@ -1240,12 +1240,15 @@ set_per_segment_quota(PG_FUNCTION_ARGS)
 
 int worker_spi_get_extension_version(int *major, int *minor)
 {
+	const char *sql = "select extversion from pg_extension where extname = 'diskquota'";
 	StartTransactionCommand();
 	int ret = SPI_connect();
 	Assert(ret = SPI_OK_CONNECT);
 	PushActiveSnapshot(GetTransactionSnapshot());
 
-	ret = SPI_execute("select extversion from pg_extension where extname = 'diskquota'", true, 0);
+	debug_query_string = sql;
+	ret = SPI_execute(sql, true, 0);
+	debug_query_string = NULL;
 
 	if (SPI_processed == 0) {
 		ret = -1;
@@ -1538,6 +1541,7 @@ diskquota_try_relation_open(Oid relid, LOCKMODE mode)
 
 	return success_open ? rel : NULL;
 }
+
 List*
 diskquota_get_index_list(Oid relid)
 {

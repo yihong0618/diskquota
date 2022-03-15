@@ -1306,13 +1306,16 @@ static const char* diskquota_status_binary_version()
 
 static const char* diskquota_status_schema_version()
 {
+	const char *sql = "select extversion from pg_extension where extname = 'diskquota'";
 	static char version[64] = {0};
 	memset(version, 0, sizeof(version));
 
 	int ret = SPI_connect();
 	Assert(ret = SPI_OK_CONNECT);
 
-	ret = SPI_execute("select extversion from pg_extension where extname = 'diskquota'", true, 0);
+	debug_query_string = sql;
+	ret = SPI_execute(sql, true, 0);
+	debug_query_string = NULL;
 
 	if(ret != SPI_OK_SELECT || SPI_processed != 1) {
 		ereport(WARNING,

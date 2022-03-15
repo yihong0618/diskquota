@@ -1,10 +1,16 @@
 \! gpconfig -c "log_statement" -v "all" > /dev/null
+\! gpconfig -c "log_min_messages" -v "DEBUG5" > /dev/null
 \! gpstop -u > /dev/null
 \! gpconfig --show log_statement
 Values on all segments are consistent
 GUC          : log_statement
 Master  value: all
 Segment value: all
+\! gpconfig --show log_min_messages
+Values on all segments are consistent
+GUC          : log_min_messages
+Master  value: debug5
+Segment value: debug5
 SELECT pg_logfile_rotate();
  pg_logfile_rotate 
 -------------------
@@ -45,12 +51,6 @@ SELECT diskquota.wait_for_worker_new_epoch();
 -- expect insert fail
 INSERT INTO a SELECT generate_series(1,100);
 ERROR:  schema's disk space quota exceeded with name:s1
-SELECT pg_sleep(1);
- pg_sleep 
-----------
- 
-(1 row)
-
 SELECT diskquota.wait_for_worker_new_epoch();
  wait_for_worker_new_epoch 
 ---------------------------
@@ -72,26 +72,107 @@ FROM gp_toolkit.gp_log_database
 WHERE logmessage LIKE '%diskquota.%'
   AND logmessage NOT LIKE '%gp_toolkit%'
   AND logtime >= NOW() - INTERVAL '1 min';
-          diskquota_related           
---------------------------------------
+                diskquota_related                 
+--------------------------------------------------
+ diskquota.blackmap
+ diskquota.blackmap_entry
+ diskquota.blackmap_entry_detail
+ diskquota.diskquota_active_table_type
  diskquota.diskquota_fetch_table_stat
+ diskquota.init_table_size_table
+ diskquota.pause
+ diskquota.pull_all_table_size
  diskquota.quota_config
+ diskquota.quota_config_pkey
+ diskquota.relation_cache_detail
+ diskquota.relation_size
+ diskquota.relation_size_local
  diskquota.resume
+ diskquota.set_per_segment_quota
+ diskquota.set_role_quota
+ diskquota.set_role_tablespace_quota
  diskquota.set_schema_quota
+ diskquota.set_schema_tablespace_quota
+ diskquota.show_blackmap
+ diskquota.show_fast_database_size_view
+ diskquota.show_fast_role_quota_view
+ diskquota.show_fast_role_tablespace_quota_view
+ diskquota.show_fast_schema_quota_view
+ diskquota.show_fast_schema_tablespace_quota_view
+ diskquota.show_relation_cache
+ diskquota.show_relation_cache_all_seg
+ diskquota.show_worker_epoch
  diskquota.state
+ diskquota.state_pkey
+ diskquota.status
  diskquota.table_size
+ diskquota.table_size_pkey
  diskquota.target
+ diskquota.target_pkey
  diskquota.wait_for_worker_new_epoch
-(8 rows)
+(36 rows)
+
+SELECT DISTINCT ON (diskquota_related) logmessage AS diskquota_related
+FROM gp_toolkit.gp_log_system
+WHERE logmessage LIKE '%diskquota%'
+  AND logmessage LIKE '%pg_extension%'
+  AND logmessage NOT LIKE '%gp_toolkit%'
+  AND logtime >= NOW() - INTERVAL '1 min';
+                                           diskquota_related                                            
+--------------------------------------------------------------------------------------------------------
+ statement: -- complain if script is sourced in psql, rather than via CREATE EXTENSION                 +
+                                                                                                       +
+                                                                                                       +
+ CREATE SCHEMA diskquota;                                                                              +
+                                                                                                       +
+ CREATE TABLE diskquota.quota_config(                                                                  +
+         targetOid oid,                                                                                +
+         quotatype int,                                                                                +
+         quotalimitMB int8,                                                                            +
+         segratio float4 DEFAULT -1,                                                                   +
+         PRIMARY KEY(targetOid, quotatype)                                                             +
+ ) DISTRIBUTED BY (targetOid, quotatype);                                                              +
+                                                                                                       +
+ CREATE TABLE diskquota.target (                                                                       +
+         quotatype int, --REFERENCES disquota.quota_config.quotatype,                                  +
+         primaryOid oid,                                                                               +
+         tablespaceOid oid, --REFERENCES pg_tablespace.oid,                                            +
+         PRIMARY KEY (primaryOid, tablespaceOid, quotatype)                                            +
+ );                                                                                                    +
+                                                                                                       +
+ CREATE TABLE diskquota.table_size(                                                                    +
+         tableid oid,                                                                                  +
+         size bigint,                                                                                  +
+         segid smallint,                                                                               +
+         PRIMARY KEY(tableid, segid)                                                                   +
+ ) DISTRIBUTED BY (tableid, segid);                                                                    +
+                                                                                                       +
+ CREATE TABLE diskquota.state(                                                                         +
+         state int,                                                                                    +
+         PRIMARY KEY(state)                                                                            +
+ ) DISTRIBUTED BY (state);                                                                             +
+                                                                                                       +
+ -- diskquota.quota_config AND diskquota.target is dump-able, other table can be generate on fly       +
+ SELECT pg_catalog.pg_extension_config_dump('diskquota.quota_config', '');                             +
+ SELECT gp_segment_id, pg_catalog.pg_extension_config_dump('diskquota.quota_config', '') FROM gp_dist_r
+ statement: select COALESCE(extversion,'') from pg_extension where extname = 'diskquota';
+(2 rows)
 
 RESET SEARCH_PATH;
 DROP EXTENSION diskquota;
 \c contrib_regression
 DROP DATABASE query_string_db;
+-- reset GUC to default
 \! gpconfig -c log_statement -m 'all' -v 'none' > /dev/null
+\! gpconfig -c log_min_messages -v 'WARNING' > /dev/null
 \! gpstop -u > /dev/null
 \! gpconfig --show log_statement
 Values on all segments are consistent
 GUC          : log_statement
 Master  value: all
 Segment value: none
+\! gpconfig --show log_min_messages
+Values on all segments are consistent
+GUC          : log_min_messages
+Master  value: warning
+Segment value: warning

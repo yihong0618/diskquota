@@ -1,6 +1,8 @@
 \! gpconfig -c "log_statement" -v "all" > /dev/null
+\! gpconfig -c "log_min_messages" -v "DEBUG5" > /dev/null
 \! gpstop -u > /dev/null
 \! gpconfig --show log_statement
+\! gpconfig --show log_min_messages
 
 SELECT pg_logfile_rotate();
 SELECT pg_logfile_rotate() FROM gp_dist_random('gp_id');
@@ -24,8 +26,6 @@ SELECT diskquota.wait_for_worker_new_epoch();
 -- expect insert fail
 INSERT INTO a SELECT generate_series(1,100);
 
-SELECT pg_sleep(1);
-
 SELECT diskquota.wait_for_worker_new_epoch();
 DROP TABLE IF EXISTS a;
 SELECT diskquota.wait_for_worker_new_epoch();
@@ -41,6 +41,13 @@ WHERE logmessage LIKE '%diskquota.%'
   AND logmessage NOT LIKE '%gp_toolkit%'
   AND logtime >= NOW() - INTERVAL '1 min';
 
+SELECT DISTINCT ON (diskquota_related) logmessage AS diskquota_related
+FROM gp_toolkit.gp_log_system
+WHERE logmessage LIKE '%diskquota%'
+  AND logmessage LIKE '%pg_extension%'
+  AND logmessage NOT LIKE '%gp_toolkit%'
+  AND logtime >= NOW() - INTERVAL '1 min';
+
 RESET SEARCH_PATH;
 
 DROP EXTENSION diskquota;
@@ -48,6 +55,9 @@ DROP EXTENSION diskquota;
 \c contrib_regression
 DROP DATABASE query_string_db;
 
+-- reset GUC to default
 \! gpconfig -c log_statement -m 'all' -v 'none' > /dev/null
+\! gpconfig -c log_min_messages -v 'WARNING' > /dev/null
 \! gpstop -u > /dev/null
 \! gpconfig --show log_statement
+\! gpconfig --show log_min_messages
