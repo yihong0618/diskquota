@@ -612,7 +612,6 @@ do_check_diskquota_state_is_ready(void)
 	int			ret;
 	TupleDesc	tupdesc;
 	int			i;
-	const char *sql;
 	StringInfoData sql_command;
 
 	initStringInfo(&sql_command);
@@ -633,8 +632,7 @@ do_check_diskquota_state_is_ready(void)
 	 * check diskquota state from table diskquota.state errors will be catch
 	 * at upper level function.
 	 */
-	sql = "select state from diskquota.state";
-	ret = SPI_execute(sql, true, 0);
+	ret = SPI_execute("select state from diskquota.state", true, 0);
 	if (ret != SPI_OK_SELECT)
 		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
 						errmsg("[diskquota] check diskquota state SPI_execute failed: error code %d", ret)));
@@ -1344,7 +1342,6 @@ do_load_quotas(void)
 	TupleDesc	tupdesc;
 	int			i;
 	int			extMajorVersion;
-	const char *sql;
 
 	/*
 	 * TODO: we should skip to reload quota config when there is no change in
@@ -1372,15 +1369,13 @@ do_load_quotas(void)
 	switch (extMajorVersion)
 	{
 		case 1:
-			sql = "select targetoid, quotatype, quotalimitMB, 0 as segratio, 0 as tablespaceoid from diskquota.quota_config";
-			ret = SPI_execute(sql, true, 0);
+			ret = SPI_execute("select targetoid, quotatype, quotalimitMB, 0 as segratio, 0 as tablespaceoid from diskquota.quota_config", true, 0);
 			break;
 		case 2:
-			sql = "SELECT c.targetOid, c.quotaType, c.quotalimitMB, COALESCE(c.segratio, 0) AS segratio, COALESCE(t"
-				  ".tablespaceoid, 0) AS tablespaceoid "
-				  "FROM diskquota.quota_config AS c LEFT OUTER JOIN diskquota.target AS t "
-				  "ON c.targetOid = t.primaryOid and c.quotaType = t.quotaType";
-			ret = SPI_execute(sql, true, 0);
+			ret = SPI_execute(
+					"SELECT c.targetOid, c.quotaType, c.quotalimitMB, COALESCE(c.segratio, 0) AS segratio, COALESCE(t.tablespaceoid, 0) AS tablespaceoid "
+					"FROM diskquota.quota_config AS c LEFT OUTER JOIN diskquota.target AS t "
+					"ON c.targetOid = t.primaryOid and c.quotaType = t.quotaType", true, 0);
 			break;
 		default:
 			ereport(ERROR,

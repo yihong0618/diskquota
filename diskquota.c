@@ -690,7 +690,6 @@ start_workers_from_dblist(void)
 	int			num = 0;
 	int			ret;
 	int			i;
-	const char *sql;
 
 	/*
 	 * Don't catch errors in start_workers_from_dblist. Since this is the
@@ -702,9 +701,7 @@ start_workers_from_dblist(void)
 	ret = SPI_connect();
 	if (ret != SPI_OK_CONNECT)
 		ereport(ERROR, (errmsg("[diskquota launcher] SPI connect error, errno: %d, return code: %d.", errno, ret)));
-
-	sql = "select dbid from diskquota_namespace.database_list;";
-	ret = SPI_execute(sql, true, 0);
+	ret = SPI_execute("select dbid from diskquota_namespace.database_list;", true, 0);
 	if (ret != SPI_OK_SELECT)
         ereport(ERROR, (errmsg(
                         "[diskquota launcher] 'select diskquota_namespace.database_list', errno: %d, return code: %d",
@@ -1302,14 +1299,13 @@ static const char* diskquota_status_binary_version()
 
 static const char* diskquota_status_schema_version()
 {
-	const char *sql = "select extversion from pg_extension where extname = 'diskquota'";
 	static char version[64] = {0};
 	memset(version, 0, sizeof(version));
 
 	int ret = SPI_connect();
 	Assert(ret = SPI_OK_CONNECT);
 
-	ret = SPI_execute(sql, true, 0);
+	ret = SPI_execute("select extversion from pg_extension where extname = 'diskquota'", true, 0);
 
 	if(ret != SPI_OK_SELECT || SPI_processed != 1) {
 		ereport(WARNING,

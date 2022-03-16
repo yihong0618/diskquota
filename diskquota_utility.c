@@ -1224,13 +1224,12 @@ set_per_segment_quota(PG_FUNCTION_ARGS)
 
 int worker_spi_get_extension_version(int *major, int *minor)
 {
-	const char *sql = "select extversion from pg_extension where extname = 'diskquota'";
 	StartTransactionCommand();
 	int ret = SPI_connect();
 	Assert(ret = SPI_OK_CONNECT);
 	PushActiveSnapshot(GetTransactionSnapshot());
 
-	ret = SPI_execute(sql, true, 0);
+	ret = SPI_execute("select extversion from pg_extension where extname = 'diskquota'", true, 0);
 
 	if (SPI_processed == 0) {
 		ret = -1;
@@ -1288,10 +1287,8 @@ get_ext_major_version(void)
 	Datum		dat;
 	bool		isnull;
 	char		*extversion;
-	const char  *sql;
 
-	sql = "select COALESCE(extversion,'') from pg_extension where extname = 'diskquota'";
-	ret = SPI_execute(sql, true, 0);
+	ret = SPI_execute("select COALESCE(extversion,'') from pg_extension where extname = 'diskquota'", true, 0);
 	if (ret != SPI_OK_SELECT)
 		ereport(ERROR,
 				(errcode(ERRCODE_INTERNAL_ERROR),
@@ -1313,7 +1310,6 @@ get_ext_major_version(void)
 				(errcode(ERRCODE_INTERNAL_ERROR),
 				errmsg("[diskquota] can not get diskquota extesion version")));
 	extversion =  TextDatumGetCString(dat);
-
 	if (extversion)
 	{
 		return (int)strtol(extversion, (char **) NULL, 10);
@@ -1371,7 +1367,6 @@ get_rel_oid_list(void)
 			list_free(indexIds);
 		}
 	}
-
 	return oidlist;
 }
 
