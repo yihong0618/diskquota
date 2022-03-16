@@ -704,7 +704,6 @@ start_workers_from_dblist(void)
 		ereport(ERROR, (errmsg("[diskquota launcher] SPI connect error, errno: %d, return code: %d.", errno, ret)));
 
 	sql = "select dbid from diskquota_namespace.database_list;";
-	debug_query_string = sql;
 	ret = SPI_execute(sql, true, 0);
 	if (ret != SPI_OK_SELECT)
         ereport(ERROR, (errmsg(
@@ -755,7 +754,6 @@ start_workers_from_dblist(void)
 	SPI_finish();
 	PopActiveSnapshot();
 	CommitTransactionCommand();
-	debug_query_string = NULL;
 
 	/* TODO: clean invalid database */
 }
@@ -999,7 +997,6 @@ del_dbid_from_database_list(Oid dbid)
 	appendStringInfo(&str, "delete from diskquota_namespace.database_list where dbid=%u;", dbid);
 
 	/* errors will be cached in outer function */
-	debug_query_string = str.data;
 	ret = SPI_execute(str.data, false, 0);
 	if (ret != SPI_OK_DELETE)
 	{
@@ -1008,7 +1005,6 @@ del_dbid_from_database_list(Oid dbid)
 						str.data, errno, ret)));
 	}
 	pfree(str.data);
-	debug_query_string = NULL;
 }
 
 /*
@@ -1313,9 +1309,7 @@ static const char* diskquota_status_schema_version()
 	int ret = SPI_connect();
 	Assert(ret = SPI_OK_CONNECT);
 
-	debug_query_string = sql;
 	ret = SPI_execute(sql, true, 0);
-	debug_query_string = NULL;
 
 	if(ret != SPI_OK_SELECT || SPI_processed != 1) {
 		ereport(WARNING,

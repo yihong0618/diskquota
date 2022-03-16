@@ -1,16 +1,10 @@
 \! gpconfig -c "log_statement" -v "all" > /dev/null
-\! gpconfig -c "log_min_messages" -v "DEBUG5" > /dev/null
 \! gpstop -u > /dev/null
 \! gpconfig --show log_statement
 Values on all segments are consistent
 GUC          : log_statement
 Master  value: all
 Segment value: all
-\! gpconfig --show log_min_messages
-Values on all segments are consistent
-GUC          : log_min_messages
-Master  value: debug5
-Segment value: debug5
 SELECT pg_logfile_rotate();
  pg_logfile_rotate 
 -------------------
@@ -51,72 +45,31 @@ SELECT diskquota.wait_for_worker_new_epoch();
 -- expect insert fail
 INSERT INTO a SELECT generate_series(1,100);
 ERROR:  schema's disk space quota exceeded with name:s1
-SELECT diskquota.wait_for_worker_new_epoch();
- wait_for_worker_new_epoch 
----------------------------
- t
-(1 row)
-
 DROP TABLE IF EXISTS a;
-SELECT diskquota.wait_for_worker_new_epoch();
- wait_for_worker_new_epoch 
----------------------------
- t
-(1 row)
-
 RESET SEARCH_PATH;
 DROP SCHEMA s1 CASCADE;
 SELECT DISTINCT ON (diskquota_related) REGEXP_REPLACE(logmessage, '.*(diskquota\.[a-z_]+).*', '\1') AS diskquota_related
 FROM gp_toolkit.gp_log_database
 WHERE logmessage LIKE '%diskquota.%'
-  AND logmessage NOT LIKE '%gp_toolkit%'
-  AND logtime >= NOW() - INTERVAL '60 min';
-                diskquota_related                 
---------------------------------------------------
- diskquota.blackmap
- diskquota.blackmap_entry
- diskquota.blackmap_entry_detail
- diskquota.diskquota_active_table_type
+  AND logmessage NOT LIKE '%gp_toolkit%';
+          diskquota_related           
+--------------------------------------
  diskquota.diskquota_fetch_table_stat
- diskquota.init_table_size_table
- diskquota.pause
- diskquota.pull_all_table_size
  diskquota.quota_config
- diskquota.quota_config_pkey
- diskquota.relation_cache_detail
- diskquota.relation_size
- diskquota.relation_size_local
  diskquota.resume
- diskquota.set_per_segment_quota
- diskquota.set_role_quota
- diskquota.set_role_tablespace_quota
  diskquota.set_schema_quota
- diskquota.set_schema_tablespace_quota
- diskquota.show_blackmap
- diskquota.show_fast_database_size_view
- diskquota.show_fast_role_quota_view
- diskquota.show_fast_role_tablespace_quota_view
- diskquota.show_fast_schema_quota_view
- diskquota.show_fast_schema_tablespace_quota_view
- diskquota.show_relation_cache
- diskquota.show_relation_cache_all_seg
- diskquota.show_worker_epoch
  diskquota.state
- diskquota.state_pkey
- diskquota.status
  diskquota.table_size
- diskquota.table_size_pkey
  diskquota.target
- diskquota.target_pkey
  diskquota.wait_for_worker_new_epoch
-(36 rows)
+(8 rows)
 
 SELECT DISTINCT ON (diskquota_related) logmessage AS diskquota_related
 FROM gp_toolkit.gp_log_system
 WHERE logmessage LIKE '%diskquota%'
   AND logmessage LIKE '%pg_extension%'
   AND logmessage NOT LIKE '%gp_toolkit%'
-  AND logtime >= NOW() - INTERVAL '60 min';
+  AND logtime >= NOW() - INTERVAL '5 minutes';
                                            diskquota_related                                            
 --------------------------------------------------------------------------------------------------------
  statement: -- complain if script is sourced in psql, rather than via CREATE EXTENSION                 +
@@ -161,15 +114,9 @@ DROP EXTENSION diskquota;
 DROP DATABASE query_string_db;
 -- reset GUC to default
 \! gpconfig -c log_statement -m 'all' -v 'none' > /dev/null
-\! gpconfig -c log_min_messages -v 'WARNING' > /dev/null
 \! gpstop -u > /dev/null
 \! gpconfig --show log_statement
 Values on all segments are consistent
 GUC          : log_statement
 Master  value: all
 Segment value: none
-\! gpconfig --show log_min_messages
-Values on all segments are consistent
-GUC          : log_min_messages
-Master  value: warning
-Segment value: warning

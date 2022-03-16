@@ -853,12 +853,10 @@ load_table_size(HTAB *local_table_stats_map)
 	{
 		case 1:
 			sql = "select tableid, size, CAST(-1 AS smallint) from diskquota.table_size";
-			debug_query_string = sql;
 			ret = SPI_execute(sql, true, 0);
 			break;
 		case 2:
 			sql = "select tableid, size, segid from diskquota.table_size";
-			debug_query_string = sql;
 			ret = SPI_execute(sql, true, 0);
 			break;
 		default:
@@ -926,7 +924,6 @@ load_table_size(HTAB *local_table_stats_map)
 		quota_entry->segid = segid;
 	}
 
-	debug_query_string = NULL;
 	return;
 }
 
