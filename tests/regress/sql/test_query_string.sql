@@ -14,7 +14,7 @@ CREATE DATABASE query_string_db;
 CREATE EXTENSION diskquota;
 
 CREATE SCHEMA s1;
-SET search_path TO s1;
+SET SEARCH_PATH TO s1;
 
 CREATE TABLE a(i int) DISTRIBUTED BY (i);
 INSERT INTO a SELECT generate_series(1,100);
@@ -33,22 +33,18 @@ SELECT diskquota.wait_for_worker_new_epoch();
 RESET SEARCH_PATH;
 DROP SCHEMA s1 CASCADE;
 
-SET SEARCH_PATH TO gp_toolkit;
-
 SELECT DISTINCT ON (diskquota_related) REGEXP_REPLACE(logmessage, '.*(diskquota\.[a-z_]+).*', '\1') AS diskquota_related
 FROM gp_toolkit.gp_log_database
 WHERE logmessage LIKE '%diskquota.%'
   AND logmessage NOT LIKE '%gp_toolkit%'
-  AND logtime >= NOW() - INTERVAL '1 min';
+  AND logtime >= NOW() - INTERVAL '60 min';
 
 SELECT DISTINCT ON (diskquota_related) logmessage AS diskquota_related
 FROM gp_toolkit.gp_log_system
 WHERE logmessage LIKE '%diskquota%'
   AND logmessage LIKE '%pg_extension%'
   AND logmessage NOT LIKE '%gp_toolkit%'
-  AND logtime >= NOW() - INTERVAL '1 min';
-
-RESET SEARCH_PATH;
+  AND logtime >= NOW() - INTERVAL '60 min';
 
 DROP EXTENSION diskquota;
 

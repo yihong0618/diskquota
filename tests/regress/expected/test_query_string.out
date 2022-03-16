@@ -31,7 +31,7 @@ CREATE DATABASE query_string_db;
 \c query_string_db
 CREATE EXTENSION diskquota;
 CREATE SCHEMA s1;
-SET search_path TO s1;
+SET SEARCH_PATH TO s1;
 CREATE TABLE a(i int) DISTRIBUTED BY (i);
 INSERT INTO a SELECT generate_series(1,100);
 -- expect insert success
@@ -66,12 +66,11 @@ SELECT diskquota.wait_for_worker_new_epoch();
 
 RESET SEARCH_PATH;
 DROP SCHEMA s1 CASCADE;
-SET SEARCH_PATH TO gp_toolkit;
 SELECT DISTINCT ON (diskquota_related) REGEXP_REPLACE(logmessage, '.*(diskquota\.[a-z_]+).*', '\1') AS diskquota_related
 FROM gp_toolkit.gp_log_database
 WHERE logmessage LIKE '%diskquota.%'
   AND logmessage NOT LIKE '%gp_toolkit%'
-  AND logtime >= NOW() - INTERVAL '1 min';
+  AND logtime >= NOW() - INTERVAL '60 min';
                 diskquota_related                 
 --------------------------------------------------
  diskquota.blackmap
@@ -117,7 +116,7 @@ FROM gp_toolkit.gp_log_system
 WHERE logmessage LIKE '%diskquota%'
   AND logmessage LIKE '%pg_extension%'
   AND logmessage NOT LIKE '%gp_toolkit%'
-  AND logtime >= NOW() - INTERVAL '1 min';
+  AND logtime >= NOW() - INTERVAL '60 min';
                                            diskquota_related                                            
 --------------------------------------------------------------------------------------------------------
  statement: -- complain if script is sourced in psql, rather than via CREATE EXTENSION                 +
@@ -155,10 +154,8 @@ WHERE logmessage LIKE '%diskquota%'
  -- diskquota.quota_config AND diskquota.target is dump-able, other table can be generate on fly       +
  SELECT pg_catalog.pg_extension_config_dump('diskquota.quota_config', '');                             +
  SELECT gp_segment_id, pg_catalog.pg_extension_config_dump('diskquota.quota_config', '') FROM gp_dist_r
- statement: select COALESCE(extversion,'') from pg_extension where extname = 'diskquota';
-(2 rows)
+(1 row)
 
-RESET SEARCH_PATH;
 DROP EXTENSION diskquota;
 \c contrib_regression
 DROP DATABASE query_string_db;
