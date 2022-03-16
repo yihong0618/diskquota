@@ -26,7 +26,6 @@
 #include "executor/spi.h"
 #include "funcapi.h"
 #include "libpq-fe.h"
-#include "tcop/utility.h"
 #include "utils/faultinjector.h"
 #include "utils/lsyscache.h"
 

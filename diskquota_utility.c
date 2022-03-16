@@ -33,7 +33,6 @@
 #include "executor/spi.h"
 #include "nodes/makefuncs.h"
 #include "storage/proc.h"
-#include "tcop/utility.h"
 #include "utils/snapmgr.h"
 #include "utils/builtins.h"
 #include "utils/faultinjector.h"

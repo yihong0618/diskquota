@@ -27,7 +27,6 @@
 #include "funcapi.h"
 #include "storage/ipc.h"
 #include "port/atomics.h"
-#include "tcop/utility.h"
 #include "utils/builtins.h"
 #include "utils/guc.h"
 #include "utils/faultinjector.h"
