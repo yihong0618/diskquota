@@ -10,12 +10,8 @@ list(APPEND exclude_isolation2_for_release
     test_vacuum
     test_truncate
     test_worker_timeout)
-if (CMAKE_BUILD_TYPE STREQUAL "Release")
-    set(regress_opts
-        --dbname=contrib_regression)
-else()
-    set(regress_opts
-        --load-extension=gp_inject_fault
+if (NOT CMAKE_BUILD_TYPE STREQUAL "Release")
+    set(load_inject_fault_opts
         --dbname=contrib_regression)
 endif()
 
@@ -30,7 +26,8 @@ RegressTarget_Add(regress
     EXCLUDE
     ${exclude_regress_for_release}
     REGRESS_OPTS
-    ${regress_opts})
+    ${load_inject_fault_opts}
+    --dbname=contrib_regression)
 
 RegressTarget_Add(isolation2
     REGRESS_TYPE
@@ -45,7 +42,8 @@ RegressTarget_Add(isolation2
     EXCLUDE
     ${exclude_isolation2_for_release}
     REGRESS_OPTS
-    ${regress_opts})
+    ${load_inject_fault_opts}
+    --dbname=isolation2test)
 
 add_custom_target(installcheck)
 add_dependencies(installcheck isolation2 regress)

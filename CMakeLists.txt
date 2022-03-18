@@ -127,7 +127,8 @@ BuildInfo_Create(${build_info_PATH}
   DISKQUOTA_GIT_HASH
   DISKQUOTA_VERSION
   GP_MAJOR_VERSION
-  GP_VERSION)
+  GP_VERSION
+  CMAKE_BUILD_TYPE)
 # Create build-info end
 
 # NOTE: keep install part at the end of file, to overwrite previous binary
