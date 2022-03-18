@@ -9,14 +9,6 @@ on:
       - "upgrade_test/**"
       - "*.md"
       - "*.sql"
-  push:
-    paths-ignore:
-      - "docs/**"
-      - "cmake/**"
-      - "test/**"
-      - "upgrade_test/**"
-      - "*.md"
-      - "*.sql"
 
 jobs:
   build:
