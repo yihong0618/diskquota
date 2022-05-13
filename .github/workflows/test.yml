@@ -1,0 +1,13 @@
+name: Check
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-18.04
+    steps:
+      - uses: actions/checkout@v3
+      with:
+          repository: greenplum-db/gpdb
+          ref: 6X_STABLE 
