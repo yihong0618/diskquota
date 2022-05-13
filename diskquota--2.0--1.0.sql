@@ -1,9 +1,10 @@
 -- TODO check if worker should not refresh, current lib should be diskquota.so
 
 -- views
-DROP VIEW diskquota.blackmap;
+DROP VIEW diskquota.rejectmap;
 DROP VIEW diskquota.show_fast_schema_tablespace_quota_view;
 DROP VIEW diskquota.show_fast_role_tablespace_quota_view;
+DROP VIEW diskquota.show_segment_ratio_quota_view;
 
 /* ALTER */ CREATE OR REPLACE VIEW diskquota.show_fast_database_size_view AS
 SELECT (
@@ -44,8 +45,8 @@ GROUP BY pgc.relowner, pgr.rolname, qc.quotalimitMB;
 DROP FUNCTION diskquota.set_schema_tablespace_quota(text, text, text);
 DROP FUNCTION diskquota.set_role_tablespace_quota(text, text, text);
 DROP FUNCTION diskquota.set_per_segment_quota(text, float4);
-DROP FUNCTION diskquota.refresh_blackmap(diskquota.blackmap_entry[], oid[]);
-DROP FUNCTION diskquota.show_blackmap();
+DROP FUNCTION diskquota.refresh_rejectmap(diskquota.rejectmap_entry[], oid[]);
+DROP FUNCTION diskquota.show_rejectmap();
 DROP FUNCTION diskquota.pause();
 DROP FUNCTION diskquota.resume();
 DROP FUNCTION diskquota.show_worker_epoch();
@@ -63,8 +64,8 @@ DROP FUNCTION diskquota.show_relation_cache_all_seg();
 -- UDF end
 
 -- table part
--- clean up schema_tablespace quota AND rolsize_tablespace quota
-DELETE FROM diskquota.quota_config WHERE quotatype = 2 or quotatype = 3;
+-- clean up NAMESPACE_TABLESPACE_QUOTA(2), ROLE_TABLESPACE_QUOTA(3) and TABLESPACE_QUOTA(4)
+DELETE FROM diskquota.quota_config WHERE quotatype in (2, 3, 4);
 
 DROP TABLE diskquota.target;
 
@@ -80,7 +81,7 @@ ALTER TABLE diskquota.table_size DROP COLUMN segid;
 
 -- type part
 ALTER TYPE diskquota.diskquota_active_table_type DROP ATTRIBUTE "GP_SEGMENT_ID";
-DROP TYPE diskquota.blackmap_entry;
-DROP TYPE diskquota.blackmap_entry_detail;
+DROP TYPE diskquota.rejectmap_entry;
+DROP TYPE diskquota.rejectmap_entry_detail;
 DROP TYPE diskquota.relation_cache_detail;
 -- type part end

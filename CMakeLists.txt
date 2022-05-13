@@ -1,8 +1,13 @@
 cmake_minimum_required(VERSION 3.18)
-# include_guard()           need 3.10
 # file(ARCHIVE_EXTRACT foo) need 3.18
 
 project(diskquota)
+
+if(NOT CMAKE_BUILD_TYPE)
+  message(STATUS "Setting build type to 'Debug' as none was specified.")
+  set(CMAKE_BUILD_TYPE "Debug" CACHE
+      STRING "Choose the type of build." FORCE)
+endif()
 
 # generate 'compile_commands.json'
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -17,11 +22,20 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/Gpdb.cmake)
 # set include directories for all sub-projects
 include_directories(${PG_INCLUDE_DIR_SERVER})
 include_directories(${PG_INCLUDE_DIR}) # for libpq
+# Overwrite the default build type flags set by cmake.
+# We don't want the '-O3 -DNDEBUG' from cmake. Instead, those will be set by the CFLAGS from pg_config.
+# And, the good news is, GPDB release always have '-g'.
+set(CMAKE_C_FLAGS_RELEASE "" CACHE
+    STRING "Flags for RELEASE build" FORCE)
+set(CMAKE_C_FLAGS_DEBUG "-DDISKQUOTA_DEBUG"
+    CACHE STRING "Flags for DEBUG build" FORCE)
 # set link flags for all sub-projects
-set(CMAKE_SHARED_LINKER_FLAGS "${PG_LD_FLAGS}")
+set(CMAKE_MODULE_LINKER_FLAGS "${PG_LD_FLAGS}")
+if (APPLE)
+    set(CMAKE_MODULE_LINKER_FLAGS "${CMAKE_MODULE_LINKER_FLAGS} -bundle_loader ${PG_BIN_DIR}/postgres")
+endif()
 # set c and ld flags for all projects
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${PG_C_FLAGS}")
-set(CMAKE_MODULE_LINKER_FLAGS_INIT "${CMAKE_EXE_LINKER_FLAGS} ${PG_LD_FLAGS}")
 
 # generate version
 if(NOT DEFINED DISKQUOTA_VERSION)
@@ -72,7 +86,9 @@ list(
 add_library(diskquota MODULE ${diskquota_SRC})
 
 if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
-  set(CMAKE_INSTALL_PREFIX "${PG_HOME}" CACHE PATH "default install prefix" FORCE)
+  set(CMAKE_INSTALL_PREFIX
+      "${PG_HOME}"
+      CACHE PATH "default install prefix" FORCE)
 endif()
 
 set_target_properties(
@@ -81,10 +97,6 @@ set_target_properties(
              PREFIX ""
              C_STANDARD 99
              LINKER_LANGUAGE "CXX")
-
-# Add installcheck targets
-add_subdirectory(tests)
-add_subdirectory(upgrade_test)
 
 # packing part, move to a separate file if this part is too large
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/Distro.cmake)
@@ -95,14 +107,45 @@ if(DEFINED DISKQUOTA_LAST_RELEASE_PATH)
   file(GLOB DISKQUOTA_PREVIOUS_LIBRARY
        "${CMAKE_BINARY_DIR}/lib/postgresql/*.so")
   install(PROGRAMS ${DISKQUOTA_PREVIOUS_LIBRARY} DESTINATION "lib/postgresql/")
+
+  get_filename_component(
+    DISKQUOTA_LAST_RELEASE_FILENAME ${DISKQUOTA_LAST_RELEASE_PATH} NAME CACHE
+    "last release installer name")
+  string(
+    REGEX
+    REPLACE "^diskquota-([0-9]+).[0-9]+.[0-9]+-.*$" "\\1"
+            DISKQUOTA_LAST_MAJOR_VERSION ${DISKQUOTA_LAST_RELEASE_FILENAME})
+  string(
+    REGEX
+    REPLACE "^diskquota-[0-9]+.([0-9]+).[0-9]+-.*$" "\\1"
+            DISKQUOTA_LAST_MINOR_VERSION ${DISKQUOTA_LAST_RELEASE_FILENAME})
+  string(
+    REGEX
+    REPLACE "^diskquota-[0-9]+.[0-9]+.([0-9]+)-.*$" "\\1"
+            DISKQUOTA_LAST_PATCH_VERSION ${DISKQUOTA_LAST_RELEASE_FILENAME})
+
+  set(DISKQUOTA_LAST_VERSION
+      "${DISKQUOTA_LAST_MAJOR_VERSION}.${DISKQUOTA_LAST_MINOR_VERSION}.${DISKQUOTA_LAST_PATCH_VERSION}"
+  )
 endif()
 
-set(CPACK_GENERATOR "TGZ")
-set(CPACK_INCLUDE_TOPLEVEL_DIRECTORY OFF)
-set(CPACK_PACKAGE_FILE_NAME
+set(tgz_NAME
     "diskquota-${DISKQUOTA_MAJOR_VERSION}.${DISKQUOTA_MINOR_VERSION}.${DISKQUOTA_PATCH_VERSION}-${DISTRO_NAME}_x86_64"
 )
+set(CPACK_GENERATOR "TGZ")
+set(CPACK_INCLUDE_TOPLEVEL_DIRECTORY OFF)
+set(CPACK_PACKAGE_FILE_NAME ${tgz_NAME})
 include(CPack)
+# create_artifact target is used to tar the package with version into a version-less tarball to be
+# used on concourse gcs resource. It will be uploaded to a gcs version file (no diskquota version
+# string in the file name), and be retrieved in the release step. Then we don't have to firgure out
+# a way to add the version string back to the release file name, just untar it.
+set(artifact_NAME "diskquota.tar.gz")
+add_custom_target(create_artifact
+  COMMAND
+  ${CMAKE_COMMAND} --build . --target package
+  COMMAND
+  ${CMAKE_COMMAND} -E tar cvf ${artifact_NAME} "${tgz_NAME}.tar.gz")
 # packing end
 
 # Create build-info
@@ -114,8 +157,13 @@ BuildInfo_Create(${build_info_PATH}
   DISKQUOTA_GIT_HASH
   DISKQUOTA_VERSION
   GP_MAJOR_VERSION
-  GP_VERSION)
+  GP_VERSION
+  CMAKE_BUILD_TYPE)
 # Create build-info end
+
+# Add installcheck targets
+add_subdirectory(tests)
+add_subdirectory(upgrade_test)
 
 # NOTE: keep install part at the end of file, to overwrite previous binary
 install(PROGRAMS "cmake/install_gpdb_component" DESTINATION ".")

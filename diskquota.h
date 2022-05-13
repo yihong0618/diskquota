@@ -1,3 +1,15 @@
+/* -------------------------------------------------------------------------
+ *
+ * diskquota.h
+ *
+ * Copyright (c) 2018-2020 Pivotal Software, Inc.
+ * Copyright (c) 2020-Present VMware, Inc. or its affiliates
+ *
+ * IDENTIFICATION
+ *		diskquota/diskquota.c
+ *
+ * -------------------------------------------------------------------------
+ */
 #ifndef DISK_QUOTA_H
 #define DISK_QUOTA_H
 
@@ -18,15 +30,25 @@
 
 /* max number of monitored database with diskquota enabled */
 #define MAX_NUM_MONITORED_DB 10
-
 typedef enum
 {
 	NAMESPACE_QUOTA = 0,
 	ROLE_QUOTA,
 	NAMESPACE_TABLESPACE_QUOTA,
 	ROLE_TABLESPACE_QUOTA,
+	/*
+	 * TABLESPACE_QUOTA
+	 * used in `quota_config` table,
+	 * when set_per_segment_quota("xx",1.0) is called
+	 * to set per segment quota to '1.0', the config
+	 * will be:
+	 * quotatype = 4 (TABLESPACE_QUOTA)
+	 * quotalimitMB = 0 (invalid quota confined)
+	 * segratio = 1.0
+	 */
+	TABLESPACE_QUOTA,
 
-	NUM_QUOTA_TYPES
+	NUM_QUOTA_TYPES,
 } QuotaType;
 
 typedef enum
@@ -46,7 +68,7 @@ typedef enum
 struct DiskQuotaLocks
 {
 	LWLock *active_table_lock;
-	LWLock *black_map_lock;
+	LWLock *reject_map_lock;
 	LWLock *extension_ddl_message_lock;
 	LWLock *extension_ddl_lock; /* ensure create diskquota extension serially */
 	LWLock *monitoring_dbid_cache_lock;
@@ -129,7 +151,7 @@ extern void register_diskquota_object_access_hook(void);
 
 /* enforcement interface*/
 extern void init_disk_quota_enforcement(void);
-extern void invalidate_database_blackmap(Oid dbid);
+extern void invalidate_database_rejectmap(Oid dbid);
 
 /* quota model interface*/
 extern void init_disk_quota_shmem(void);
@@ -152,6 +174,7 @@ extern void     truncateStringInfo(StringInfo str, int nchars);
 extern List    *get_rel_oid_list(void);
 extern int64    calculate_relation_size_all_forks(RelFileNodeBackend *rnode, char relstorage);
 extern Relation diskquota_relation_open(Oid relid, LOCKMODE mode);
+extern bool     get_rel_name_namespace(Oid relid, Oid *nsOid, char *relname);
 extern List    *diskquota_get_index_list(Oid relid);
 extern void     diskquota_get_appendonly_aux_oid_list(Oid reloid, Oid *segrelid, Oid *blkdirrelid, Oid *visimaprelid);
 extern Oid      diskquota_parse_primary_table_oid(Oid namespace, char *relname);
@@ -159,5 +182,6 @@ extern Oid      diskquota_parse_primary_table_oid(Oid namespace, char *relname);
 extern bool         worker_increase_epoch(Oid database_oid);
 extern unsigned int worker_get_epoch(Oid database_oid);
 extern bool         diskquota_is_paused(void);
+extern void         do_check_diskquota_state_is_ready(void);
 
 #endif

@@ -7,7 +7,8 @@
  * launcher process which is responsible for starting/refreshing the diskquota
  * worker processes which monitor given databases.
  *
- * Copyright (c) 2018-Present Pivotal Software, Inc.
+ * Copyright (c) 2018-2020 Pivotal Software, Inc.
+ * Copyright (c) 2020-Present VMware, Inc. or its affiliates
  *
  * IDENTIFICATION
  *		diskquota/diskquota.c
@@ -113,7 +114,7 @@ static void terminate_all_workers(void);
 static void on_add_db(Oid dbid, MessageResult *code);
 static void on_del_db(Oid dbid, MessageResult *code);
 static bool is_valid_dbid(Oid dbid);
-extern void invalidate_database_blackmap(Oid dbid);
+extern void invalidate_database_rejectmap(Oid dbid);
 
 /*
  * Entrypoint of diskquota module.
@@ -130,7 +131,8 @@ _PG_init(void)
 	{
 		ereport(ERROR, (errmsg("[diskquota] booting " DISKQUOTA_VERSION ", but " DISKQUOTA_BINARY_NAME
 		                       " not in shared_preload_libraries. abort.")));
-	} else
+	}
+	else
 	{
 		ereport(INFO, (errmsg("booting diskquota-" DISKQUOTA_VERSION)));
 	}
@@ -226,8 +228,14 @@ disk_quota_sigusr1(SIGNAL_ARGS)
 static void
 define_guc_variables(void)
 {
+#if DISKQUOTA_DEBUG
+	const int min_naptime = 0;
+#else
+	const int min_naptime = 1;
+#endif
+
 	DefineCustomIntVariable("diskquota.naptime", "Duration between each check (in seconds).", NULL, &diskquota_naptime,
-	                        2, 0, INT_MAX, PGC_SIGHUP, 0, NULL, NULL, NULL);
+	                        2, min_naptime, INT_MAX, PGC_SIGHUP, 0, NULL, NULL, NULL);
 
 	DefineCustomIntVariable("diskquota.max_active_tables", "Max number of active tables monitored by disk-quota.", NULL,
 	                        &diskquota_max_active_tables, 1 * 1024 * 1024, 1, INT_MAX, PGC_SIGHUP, 0, NULL, NULL, NULL);
@@ -292,7 +300,8 @@ disk_quota_worker_main(Datum main_arg)
 			snprintf(_errmsg, sizeof(_errmsg), _errfmt, times * diskquota_naptime);
 
 			init_ps_display("bgworker:", "[diskquota]", dbname, _errmsg);
-		} else
+		}
+		else
 		{
 			init_ps_display("bgworker:", "[diskquota]", dbname,
 			                "v" DISKQUOTA_VERSION " is not matching with current SQL. stop working");
@@ -367,8 +376,8 @@ disk_quota_worker_main(Datum main_arg)
 	if (got_sigterm)
 	{
 		ereport(LOG, (errmsg("[diskquota] bgworker for \"%s\" is being terminated by SIGTERM.", dbname)));
-		/* clear the out-of-quota blacklist in shared memory */
-		invalidate_database_blackmap(MyDatabaseId);
+		/* clear the out-of-quota rejectmap in shared memory */
+		invalidate_database_rejectmap(MyDatabaseId);
 		proc_exit(0);
 	}
 
@@ -416,12 +425,14 @@ disk_quota_worker_main(Datum main_arg)
 		/* Do the work */
 		if (!diskquota_is_paused()) refresh_disk_quota_model(false);
 
+		/* Reset memory account to fix memory leak */
+		MemoryAccounting_Reset();
 		worker_increase_epoch(MyDatabaseId);
 	}
 
 	ereport(LOG, (errmsg("[diskquota] bgworker for \"%s\" is being terminated by SIGTERM.", dbname)));
-	/* clear the out-of-quota blacklist in shared memory */
-	invalidate_database_blackmap(MyDatabaseId);
+	/* clear the out-of-quota rejectmap in shared memory */
+	invalidate_database_rejectmap(MyDatabaseId);
 	proc_exit(0);
 }
 
@@ -589,8 +600,8 @@ create_monitor_db_table(void)
 		ret_code = SPI_execute(sql, false, 0);
 		if (ret_code != SPI_OK_UTILITY)
 		{
-			ereport(ERROR, (errmsg("[diskquota launcher] SPI_execute error, sql: \"%s\", errno: %d, ret_code: %d.", sql,
-			                       errno, ret_code)));
+			ereport(ERROR, (errmsg("[diskquota launcher] SPI_execute error, sql: \"%s\", reason: %s, ret_code: %d.",
+			                       sql, strerror(errno), ret_code)));
 		}
 	}
 	PG_CATCH();
@@ -636,12 +647,13 @@ start_workers_from_dblist(void)
 	PushActiveSnapshot(GetTransactionSnapshot());
 	ret = SPI_connect();
 	if (ret != SPI_OK_CONNECT)
-		ereport(ERROR, (errmsg("[diskquota launcher] SPI connect error, errno: %d, return code: %d.", errno, ret)));
+		ereport(ERROR,
+		        (errmsg("[diskquota launcher] SPI connect error, reason: %s, return code: %d.", strerror(errno), ret)));
 	ret = SPI_execute("select dbid from diskquota_namespace.database_list;", true, 0);
 	if (ret != SPI_OK_SELECT)
 		ereport(ERROR,
-		        (errmsg("[diskquota launcher] 'select diskquota_namespace.database_list', errno: %d, return code: %d",
-		                errno, ret)));
+		        (errmsg("[diskquota launcher] 'select diskquota_namespace.database_list', reason: %s, return code: %d.",
+		                strerror(errno), ret)));
 	tupdesc = SPI_tuptable->tupdesc;
 	if (tupdesc->natts != 1 || tupdesc->attrs[0]->atttypid != OIDOID)
 	{
@@ -841,7 +853,7 @@ on_add_db(Oid dbid, MessageResult *code)
  * do:
  * 1. kill the associated worker process
  * 2. delete dbid from diskquota_namespace.database_list
- * 3. invalidate black-map entries and monitoring_dbid_cache from shared memory
+ * 3. invalidate reject-map entries and monitoring_dbid_cache from shared memory
  */
 static void
 on_del_db(Oid dbid, MessageResult *code)
@@ -889,8 +901,8 @@ add_dbid_to_database_list(Oid dbid)
 
 	if (ret != SPI_OK_SELECT)
 		ereport(ERROR, (errmsg("[diskquota launcher] error occured while checking database_list, "
-		                       " code = %d errno = %d",
-		                       ret, errno)));
+		                       " code: %d, reason: %s.",
+		                       ret, strerror(errno))));
 
 	if (SPI_processed == 1)
 	{
@@ -905,8 +917,8 @@ add_dbid_to_database_list(Oid dbid)
 
 	if (ret != SPI_OK_INSERT || SPI_processed != 1)
 		ereport(ERROR, (errmsg("[diskquota launcher] error occured while updating database_list, "
-		                       " code = %d errno = %d",
-		                       ret, errno)));
+		                       " code: %d, reason: %s.",
+		                       ret, strerror(errno))));
 
 	return;
 }
@@ -931,7 +943,8 @@ del_dbid_from_database_list(Oid dbid)
 	                            NULL, false, 0);
 
 	ereportif(ret != SPI_OK_DELETE, ERROR,
-	          (errmsg("[diskquota launcher] del_dbid_from_database_list: errno: %d, ret_code: %d.", errno, ret)));
+	          (errmsg("[diskquota launcher] del_dbid_from_database_list: reason: %s, ret_code: %d.", strerror(errno),
+	                  ret)));
 }
 
 /*
@@ -1174,7 +1187,7 @@ diskquota_status_check_soft_limit()
 	if (!found) return "paused";
 
 	// if worker booted, check 'worker_map->is_paused'
-	return paused ? "paused" : "enabled";
+	return paused ? "paused" : "on";
 }
 
 static const char *
@@ -1200,7 +1213,7 @@ diskquota_status_check_hard_limit()
 	// hard limits should also paused
 	if (found && paused && hardlimit) return "paused";
 
-	return hardlimit ? "enabled" : "disabled";
+	return hardlimit ? "on" : "off";
 }
 
 static const char *

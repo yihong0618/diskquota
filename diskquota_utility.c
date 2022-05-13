@@ -8,7 +8,8 @@
  * diskquota_start_worker is used when 'create extension' DDL. It will start
  * the corresponding worker process immediately.
  *
- * Copyright (c) 2018-Present Pivotal Software, Inc.
+ * Copyright (c) 2018-2020 Pivotal Software, Inc.
+ * Copyright (c) 2020-Present VMware, Inc. or its affiliates
  *
  * IDENTIFICATION
  *		diskquota/diskquota_utility.c
@@ -23,6 +24,7 @@
 #include "access/xact.h"
 #include "catalog/namespace.h"
 #include "catalog/objectaccess.h"
+#include "catalog/pg_authid.h"
 #include "catalog/pg_collation.h"
 #include "catalog/pg_extension.h"
 #include "catalog/pg_namespace.h"
@@ -65,14 +67,47 @@ PG_FUNCTION_INFO_V1(pull_all_table_size);
 
 /* timeout count to wait response from launcher process, in 1/10 sec */
 #define WAIT_TIME_COUNT 1200
+/*
+ * three types values for "quota" column in "quota_config" table:
+ * 1) more than 0: valid value
+ * 2) 0: meaningless value, rejected by diskquota UDF
+ * 3) less than 0: to delete the quota config in the table
+ *
+ * the values for segratio column are the same as quota column
+ *
+ * In quota_config table,
+ * 1) when quota type is "TABLESPACE_QUOTA",
+ *    the quota column value is always INVALID_QUOTA
+ * 2) when quota type is "NAMESPACE_TABLESPACE_QUOTA" or "ROLE_TABLESPACE_QUOTA"
+ *    and no segratio configed for the tablespace, the segratio value is
+ *    INVALID_SEGRATIO.
+ * 3) when quota type is "NAMESPACE_QUOTA" or "ROLE_QUOTA", the segratio is
+ *    always INVALID_SEGRATIO.
+ */
+#define INVALID_SEGRATIO 0.0
+#define INVALID_QUOTA 0
+
+#define report_ddl_err(ddl_msg, prefix)                                                      \
+	do                                                                                       \
+	{                                                                                        \
+		MessageResult ddl_result_ = (MessageResult)ddl_msg->result;                          \
+		const char   *ddl_err_;                                                              \
+		const char   *ddl_hint_;                                                             \
+		ddl_err_code_to_err_message(ddl_result_, &ddl_err_, &ddl_hint_);                     \
+		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR), errmsg("%s: %s", prefix, ddl_err_), \
+		                ddl_hint_ ? errhint("%s", ddl_hint_) : 0));                          \
+	} while (0)
 
 static object_access_hook_type next_object_access_hook;
 static bool                    is_database_empty(void);
-static void        dq_object_access_hook(ObjectAccessType access, Oid classId, Oid objectId, int subId, void *arg);
-static const char *ddl_err_code_to_err_message(MessageResult code);
-static int64       get_size_in_mb(char *str);
-static void        set_quota_config_internal(Oid targetoid, int64 quota_limit_mb, QuotaType type);
-static void        set_target_internal(Oid primaryoid, Oid spcoid, int64 quota_limit_mb, QuotaType type);
+static void  dq_object_access_hook(ObjectAccessType access, Oid classId, Oid objectId, int subId, void *arg);
+static void  ddl_err_code_to_err_message(MessageResult code, const char **err_msg, const char **hint_msg);
+static int64 get_size_in_mb(char *str);
+static void set_quota_config_internal(Oid targetoid, int64 quota_limit_mb, QuotaType type, float4 segratio, Oid spcoid);
+static int  set_target_internal(Oid primaryoid, Oid spcoid, int64 quota_limit_mb, QuotaType type);
+static float4 get_per_segment_ratio(Oid spcoid);
+static bool   to_delete_quota(QuotaType type, int64 quota_limit_mb, float4 segratio);
+static void   check_role(Oid roleoid, char *rolname, int64 quota_limit_mb);
 
 List *get_rel_oid_list(void);
 
@@ -332,7 +367,10 @@ diskquota_start_worker(PG_FUNCTION_ARGS)
 			ResetLatch(&MyProc->procLatch);
 
 			ereportif(kill(launcher_pid, 0) == -1 && errno == ESRCH, // do existence check
-			          ERROR, (errmsg("[diskquota] diskquota launcher pid = %d no longer exists", launcher_pid)));
+			          ERROR,
+			          (errmsg("[diskquota] diskquota launcher pid = %d no longer exists", launcher_pid),
+			           errhint("The diskquota launcher process has been terminated for some reasons. Consider to "
+			                   "restart the cluster to start it.")));
 
 			LWLockAcquire(diskquota_locks.extension_ddl_message_lock, LW_SHARED);
 			if (extension_ddl_message->result != ERR_PENDING)
@@ -348,8 +386,7 @@ diskquota_start_worker(PG_FUNCTION_ARGS)
 	{
 		LWLockRelease(diskquota_locks.extension_ddl_message_lock);
 		LWLockRelease(diskquota_locks.extension_ddl_lock);
-		elog(ERROR, "[diskquota] failed to create diskquota extension: %s",
-		     ddl_err_code_to_err_message((MessageResult)extension_ddl_message->result));
+		report_ddl_err(extension_ddl_message, "[diskquota] failed to create diskquota extension");
 	}
 	LWLockRelease(diskquota_locks.extension_ddl_message_lock);
 	LWLockRelease(diskquota_locks.extension_ddl_lock);
@@ -357,9 +394,8 @@ diskquota_start_worker(PG_FUNCTION_ARGS)
 	/* notify DBA to run init_table_size_table() when db is not empty */
 	if (!is_database_empty())
 	{
-		ereport(WARNING, (errmsg("database is not empty, please run `select diskquota.init_table_size_table()` to "
-		                         "initialize table_size information for diskquota extension. Note that for large "
-		                         "database, this function may take a long time.")));
+		ereport(WARNING, (errmsg("[diskquota] diskquota is not ready because current database is not empty"),
+		                  errhint("please run 'SELECT diskquota.init_table_size_table();' to initialize diskquota")));
 	}
 	PG_RETURN_VOID();
 }
@@ -379,7 +415,8 @@ dispatch_pause_or_resume_command(Oid dbid, bool pause_extension)
 	if (dbid == InvalidOid)
 	{
 		appendStringInfo(&sql, "()");
-	} else
+	}
+	else
 	{
 		appendStringInfo(&sql, "(%d)", dbid);
 	}
@@ -509,7 +546,8 @@ is_database_empty(void)
 	        "  pg_namespace AS n "
 	        "WHERE c.oid > 16384 and relnamespace = n.oid and nspname != 'diskquota'",
 	        true, 0);
-	if (ret != SPI_OK_SELECT) elog(ERROR, "cannot select pg_class and pg_namespace table: error code %d", errno);
+	if (ret != SPI_OK_SELECT)
+		elog(ERROR, "cannot select pg_class and pg_namespace table, reason: %s.", strerror(errno));
 
 	tupdesc = SPI_tuptable->tupdesc;
 	/* check sql return value whether database is empty */
@@ -585,7 +623,10 @@ dq_object_access_hook_on_drop(void)
 			ResetLatch(&MyProc->procLatch);
 
 			ereportif(kill(launcher_pid, 0) == -1 && errno == ESRCH, // do existence check
-			          ERROR, (errmsg("[diskquota] diskquota launcher pid = %d no longer exists", launcher_pid)));
+			          ERROR,
+			          (errmsg("[diskquota] diskquota launcher pid = %d no longer exists", launcher_pid),
+			           errhint("The diskquota launcher process has been terminated for some reasons. Consider to "
+			                   "restart the cluster to start it.")));
 
 			LWLockAcquire(diskquota_locks.extension_ddl_message_lock, LW_SHARED);
 			if (extension_ddl_message->result != ERR_PENDING)
@@ -601,8 +642,7 @@ dq_object_access_hook_on_drop(void)
 	{
 		LWLockRelease(diskquota_locks.extension_ddl_message_lock);
 		LWLockRelease(diskquota_locks.extension_ddl_lock);
-		elog(ERROR, "[diskquota launcher] failed to drop diskquota extension: %s",
-		     ddl_err_code_to_err_message((MessageResult)extension_ddl_message->result));
+		report_ddl_err(extension_ddl_message, "[diskquota] failed to drop diskquota extension");
 	}
 	LWLockRelease(diskquota_locks.extension_ddl_message_lock);
 	LWLockRelease(diskquota_locks.extension_ddl_lock);
@@ -640,28 +680,63 @@ out:
  * Using this function to convert error code from diskquota
  * launcher to error message and return it to client.
  */
-static const char *
-ddl_err_code_to_err_message(MessageResult code)
+static void
+ddl_err_code_to_err_message(MessageResult code, const char **err_msg, const char **hint_msg)
 {
+	*hint_msg = NULL;
 	switch (code)
 	{
 		case ERR_PENDING:
-			return "no response from diskquota launcher, check whether launcher process exists";
+			*err_msg  = "no response from diskquota launcher, check whether launcher process exists";
+			*hint_msg = "Create \"diskquota\" database and restart the cluster.";
+			break;
 		case ERR_OK:
-			return "succeeded";
+			*err_msg = "succeeded";
+			break;
 		case ERR_EXCEED:
-			return "too many databases to monitor";
+			*err_msg = "too many databases to monitor";
+			break;
 		case ERR_ADD_TO_DB:
-			return "add dbid to database_list failed";
+			*err_msg = "add dbid to database_list failed";
+			break;
 		case ERR_DEL_FROM_DB:
-			return "delete dbid from database_list failed";
+			*err_msg = "delete dbid from database_list failed";
+			break;
 		case ERR_START_WORKER:
-			return "start diskquota worker failed";
+			*err_msg = "start diskquota worker failed";
+			break;
 		case ERR_INVALID_DBID:
-			return "invalid dbid";
+			*err_msg = "invalid dbid";
+			break;
 		default:
-			return "unknown error";
+			*err_msg = "unknown error";
+			break;
 	}
+}
+
+static Datum
+__get_oid_auto_case_convert(Oid (*f)(const char *name, bool missing_ok), const char *name)
+{
+	char *b   = NULL;
+	int   l   = strlen(name);
+	Oid   ret = InvalidOid;
+
+	if (l > 2 && name[0] == '"' && name[l - 1] == '"')
+	{
+		// object name wrapped by '"'. eg: "foo"
+		b = palloc(l);
+		StrNCpy(b, name + 1, l - 1); // trim the '"'. unlike strncpy, StrNCpy will ensure b[l-1] = '\0'
+	}
+	else
+	{
+		// lower the object name if not wrapped by '"'
+		b = str_tolower(name, strlen(name), DEFAULT_COLLATION_OID);
+	}
+
+	ret = f(b, false);
+
+	pfree(b);
+	return ret;
 }
 
 /*
@@ -681,8 +756,7 @@ set_role_quota(PG_FUNCTION_ARGS)
 	}
 
 	rolname = text_to_cstring(PG_GETARG_TEXT_PP(0));
-	rolname = str_tolower(rolname, strlen(rolname), DEFAULT_COLLATION_OID);
-	roleoid = get_role_oid(rolname, false);
+	roleoid = __get_oid_auto_case_convert(get_role_oid, rolname);
 
 	sizestr        = text_to_cstring(PG_GETARG_TEXT_PP(1));
 	sizestr        = str_tolower(sizestr, strlen(sizestr), DEFAULT_COLLATION_OID);
@@ -692,7 +766,11 @@ set_role_quota(PG_FUNCTION_ARGS)
 	{
 		ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE), errmsg("disk quota can not be set to 0 MB")));
 	}
-	set_quota_config_internal(roleoid, quota_limit_mb, ROLE_QUOTA);
+	check_role(roleoid, rolname, quota_limit_mb);
+
+	SPI_connect();
+	set_quota_config_internal(roleoid, quota_limit_mb, ROLE_QUOTA, INVALID_SEGRATIO, InvalidOid);
+	SPI_finish();
 	PG_RETURN_VOID();
 }
 
@@ -713,8 +791,7 @@ set_schema_quota(PG_FUNCTION_ARGS)
 	}
 
 	nspname      = text_to_cstring(PG_GETARG_TEXT_PP(0));
-	nspname      = str_tolower(nspname, strlen(nspname), DEFAULT_COLLATION_OID);
-	namespaceoid = get_namespace_oid(nspname, false);
+	namespaceoid = __get_oid_auto_case_convert(get_namespace_oid, nspname);
 
 	sizestr        = text_to_cstring(PG_GETARG_TEXT_PP(1));
 	sizestr        = str_tolower(sizestr, strlen(sizestr), DEFAULT_COLLATION_OID);
@@ -724,7 +801,9 @@ set_schema_quota(PG_FUNCTION_ARGS)
 	{
 		ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE), errmsg("disk quota can not be set to 0 MB")));
 	}
-	set_quota_config_internal(namespaceoid, quota_limit_mb, NAMESPACE_QUOTA);
+	SPI_connect();
+	set_quota_config_internal(namespaceoid, quota_limit_mb, NAMESPACE_QUOTA, INVALID_SEGRATIO, InvalidOid);
+	SPI_finish();
 	PG_RETURN_VOID();
 }
 
@@ -744,6 +823,7 @@ set_role_tablespace_quota(PG_FUNCTION_ARGS)
 	char *rolname;
 	char *sizestr;
 	int64 quota_limit_mb;
+	int   row_id;
 
 	if (!superuser())
 	{
@@ -751,23 +831,25 @@ set_role_tablespace_quota(PG_FUNCTION_ARGS)
 	}
 
 	rolname = text_to_cstring(PG_GETARG_TEXT_PP(0));
-	rolname = str_tolower(rolname, strlen(rolname), DEFAULT_COLLATION_OID);
-	roleoid = get_role_oid(rolname, false);
+	roleoid = __get_oid_auto_case_convert(get_role_oid, rolname);
 
 	spcname = text_to_cstring(PG_GETARG_TEXT_PP(1));
-	spcname = str_tolower(spcname, strlen(spcname), DEFAULT_COLLATION_OID);
-	spcoid  = get_tablespace_oid(spcname, false);
+	spcoid  = __get_oid_auto_case_convert(get_tablespace_oid, spcname);
 
 	sizestr        = text_to_cstring(PG_GETARG_TEXT_PP(2));
 	sizestr        = str_tolower(sizestr, strlen(sizestr), DEFAULT_COLLATION_OID);
 	quota_limit_mb = get_size_in_mb(sizestr);
+
 	if (quota_limit_mb == 0)
 	{
 		ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE), errmsg("disk quota can not be set to 0 MB")));
 	}
+	check_role(roleoid, rolname, quota_limit_mb);
 
-	set_target_internal(roleoid, spcoid, quota_limit_mb, ROLE_TABLESPACE_QUOTA);
-	set_quota_config_internal(roleoid, quota_limit_mb, ROLE_TABLESPACE_QUOTA);
+	SPI_connect();
+	row_id = set_target_internal(roleoid, spcoid, quota_limit_mb, ROLE_TABLESPACE_QUOTA);
+	set_quota_config_internal(row_id, quota_limit_mb, ROLE_TABLESPACE_QUOTA, INVALID_SEGRATIO, spcoid);
+	SPI_finish();
 	PG_RETURN_VOID();
 }
 
@@ -787,6 +869,7 @@ set_schema_tablespace_quota(PG_FUNCTION_ARGS)
 	char *nspname;
 	char *sizestr;
 	int64 quota_limit_mb;
+	int   row_id;
 
 	if (!superuser())
 	{
@@ -794,12 +877,10 @@ set_schema_tablespace_quota(PG_FUNCTION_ARGS)
 	}
 
 	nspname      = text_to_cstring(PG_GETARG_TEXT_PP(0));
-	nspname      = str_tolower(nspname, strlen(nspname), DEFAULT_COLLATION_OID);
-	namespaceoid = get_namespace_oid(nspname, false);
+	namespaceoid = __get_oid_auto_case_convert(get_namespace_oid, nspname);
 
 	spcname = text_to_cstring(PG_GETARG_TEXT_PP(1));
-	spcname = str_tolower(spcname, strlen(spcname), DEFAULT_COLLATION_OID);
-	spcoid  = get_tablespace_oid(spcname, false);
+	spcoid  = __get_oid_auto_case_convert(get_tablespace_oid, spcname);
 
 	sizestr        = text_to_cstring(PG_GETARG_TEXT_PP(2));
 	sizestr        = str_tolower(sizestr, strlen(sizestr), DEFAULT_COLLATION_OID);
@@ -809,21 +890,33 @@ set_schema_tablespace_quota(PG_FUNCTION_ARGS)
 		ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE), errmsg("disk quota can not be set to 0 MB")));
 	}
 
-	set_target_internal(namespaceoid, spcoid, quota_limit_mb, NAMESPACE_TABLESPACE_QUOTA);
-	set_quota_config_internal(namespaceoid, quota_limit_mb, NAMESPACE_TABLESPACE_QUOTA);
+	SPI_connect();
+	row_id = set_target_internal(namespaceoid, spcoid, quota_limit_mb, NAMESPACE_TABLESPACE_QUOTA);
+	set_quota_config_internal(row_id, quota_limit_mb, NAMESPACE_TABLESPACE_QUOTA, INVALID_SEGRATIO, spcoid);
+	SPI_finish();
 	PG_RETURN_VOID();
 }
 
+/*
+ * set_quota_config_intenral - insert/update/delete quota_config table
+ *
+ * If the segratio is valid, query the segratio from
+ * the table "quota_config" by spcoid.
+ *
+ * DELETE doesn't need the segratio
+ */
 static void
-set_quota_config_internal(Oid targetoid, int64 quota_limit_mb, QuotaType type)
+set_quota_config_internal(Oid targetoid, int64 quota_limit_mb, QuotaType type, float4 segratio, Oid spcoid)
 {
 	int ret;
+
+	/* Report error if diskquota is not ready. */
+	do_check_diskquota_state_is_ready();
 
 	/*
 	 * If error happens in set_quota_config_internal, just return error messages to
 	 * the client side. So there is no need to catch the error.
 	 */
-	SPI_connect();
 
 	ret = SPI_execute_with_args("select true from diskquota.quota_config where targetoid = $1 and quotatype = $2", 2,
 	                            (Oid[]){
@@ -837,78 +930,113 @@ set_quota_config_internal(Oid targetoid, int64 quota_limit_mb, QuotaType type)
 	                            NULL, true, 0);
 	if (ret != SPI_OK_SELECT) elog(ERROR, "cannot select quota setting table: error code %d", ret);
 
-	/* if the schema or role's quota has been set before */
-	if (SPI_processed == 0 && quota_limit_mb > 0)
+	if (to_delete_quota(type, quota_limit_mb, segratio))
 	{
-		ret = SPI_execute_with_args("insert into diskquota.quota_config values($1, $2, $3)", 3,
-		                            (Oid[]){
-		                                    OIDOID,
-		                                    INT4OID,
-		                                    INT8OID,
-		                            },
-		                            (Datum[]){
-		                                    ObjectIdGetDatum(targetoid),
-		                                    Int32GetDatum(type),
-		                                    Int64GetDatum(quota_limit_mb),
-		                            },
-		                            NULL, false, 0);
-		if (ret != SPI_OK_INSERT) elog(ERROR, "cannot insert into quota setting table, error code %d", ret);
-	} else if (SPI_processed > 0 && quota_limit_mb < 0)
+		if (SPI_processed > 0)
+		{
+			ret = SPI_execute_with_args("delete from diskquota.quota_config where targetoid = $1 and quotatype = $2", 2,
+			                            (Oid[]){
+			                                    OIDOID,
+			                                    INT4OID,
+			                            },
+			                            (Datum[]){
+			                                    ObjectIdGetDatum(targetoid),
+			                                    Int32GetDatum(type),
+			                            },
+			                            NULL, false, 0);
+			if (ret != SPI_OK_DELETE) elog(ERROR, "cannot delete item from quota setting table, error code %d", ret);
+		}
+		// else do nothing
+	}
+	// to upsert quota_config
+	else
 	{
-		ret = SPI_execute_with_args("delete from diskquota.quota_config where targetoid = $1 and quotatype = $2", 2,
-		                            (Oid[]){
-		                                    OIDOID,
-		                                    INT4OID,
-		                            },
-		                            (Datum[]){
-		                                    ObjectIdGetDatum(targetoid),
-		                                    Int32GetDatum(type),
-		                            },
-		                            NULL, false, 0);
-		if (ret != SPI_OK_DELETE) elog(ERROR, "cannot delete item from quota setting table, error code %d", ret);
-	} else if (SPI_processed > 0 && quota_limit_mb > 0)
-	{
-		ret = SPI_execute_with_args(
-		        "update diskquota.quota_config set quotalimitMB = $1 where targetoid= $2 and quotatype = $3", 3,
-		        (Oid[]){
-		                INT8OID,
-		                OIDOID,
-		                INT4OID,
-		        },
-		        (Datum[]){
-		                Int64GetDatum(quota_limit_mb),
-		                ObjectIdGetDatum(targetoid),
-		                Int32GetDatum(type),
-		        },
-		        NULL, false, 0);
-		if (ret != SPI_OK_UPDATE) elog(ERROR, "cannot update quota setting table, error code %d", ret);
+		if (SPI_processed == 0)
+		{
+			if (segratio == INVALID_SEGRATIO && !(type == ROLE_QUOTA || type == NAMESPACE_QUOTA))
+				segratio = get_per_segment_ratio(spcoid);
+			ret = SPI_execute_with_args("insert into diskquota.quota_config values($1, $2, $3, $4)", 4,
+			                            (Oid[]){
+			                                    OIDOID,
+			                                    INT4OID,
+			                                    INT8OID,
+			                                    FLOAT4OID,
+			                            },
+			                            (Datum[]){
+			                                    ObjectIdGetDatum(targetoid),
+			                                    Int32GetDatum(type),
+			                                    Int64GetDatum(quota_limit_mb),
+			                                    Float4GetDatum(segratio),
+			                            },
+			                            NULL, false, 0);
+			if (ret != SPI_OK_INSERT) elog(ERROR, "cannot insert into quota setting table, error code %d", ret);
+		}
+		else
+		{
+			// no need to update segratio
+			if (segratio == INVALID_SEGRATIO)
+			{
+				ret = SPI_execute_with_args(
+				        "update diskquota.quota_config set quotalimitMB = $1 where targetoid= $2 and quotatype = $3", 3,
+				        (Oid[]){
+				                INT8OID,
+				                OIDOID,
+				                INT4OID,
+				        },
+				        (Datum[]){
+				                Int64GetDatum(quota_limit_mb),
+				                ObjectIdGetDatum(targetoid),
+				                Int32GetDatum(type),
+				        },
+				        NULL, false, 0);
+			}
+			else
+			{
+				ret = SPI_execute_with_args(
+				        "update diskquota.quota_config set quotalimitMb = $1, segratio = $2 where targetoid= $3 and "
+				        "quotatype = $4",
+				        4,
+				        (Oid[]){
+				                INT8OID,
+				                FLOAT4OID,
+				                OIDOID,
+				                INT4OID,
+				        },
+				        (Datum[]){
+				                Int64GetDatum(quota_limit_mb),
+				                Float4GetDatum(segratio),
+				                ObjectIdGetDatum(targetoid),
+				                Int32GetDatum(type),
+				        },
+				        NULL, false, 0);
+			}
+			if (ret != SPI_OK_UPDATE) elog(ERROR, "cannot update quota setting table, error code %d", ret);
+		}
 	}
 
-	/*
-	 * And finish our transaction.
-	 */
-	SPI_finish();
 	return;
 }
 
-static void
+static int
 set_target_internal(Oid primaryoid, Oid spcoid, int64 quota_limit_mb, QuotaType type)
 {
-	int ret;
+	int   ret;
+	int   row_id  = -1;
+	bool  is_null = false;
+	Datum v;
 
 	/*
-	 * If error happens in set_quota_config_internal, just return error messages to
+	 * If error happens in set_target_internal, just return error messages to
 	 * the client side. So there is no need to catch the error.
 	 */
-	SPI_connect();
 
 	ret = SPI_execute_with_args(
-	        "select true from diskquota.quota_config as q, diskquota.target as t"
+	        "select t.rowId from diskquota.quota_config as q, diskquota.target as t"
 	        " where t.primaryOid = $1"
 	        " and t.tablespaceOid = $2"
 	        " and t.quotaType = $3"
 	        " and t.quotaType = q.quotaType"
-	        " and t.primaryOid = q.targetOid",
+	        " and t.rowId = q.targetOid",
 	        3,
 	        (Oid[]){
 	                OIDOID,
@@ -923,43 +1051,63 @@ set_target_internal(Oid primaryoid, Oid spcoid, int64 quota_limit_mb, QuotaType 
 	        NULL, true, 0);
 	if (ret != SPI_OK_SELECT) elog(ERROR, "cannot select target setting table: error code %d", ret);
 
-	/* if the schema or role's quota has been set before */
-	if (SPI_processed == 0 && quota_limit_mb > 0)
+	if (SPI_processed > 0)
 	{
-		ret = SPI_execute_with_args("insert into diskquota.target values($1, $2, $3)", 3,
-		                            (Oid[]){
-		                                    INT4OID,
-		                                    OIDOID,
-		                                    OIDOID,
-		                            },
-		                            (Datum[]){
-		                                    Int32GetDatum(type),
-		                                    ObjectIdGetDatum(primaryoid),
-		                                    ObjectIdGetDatum(spcoid),
-		                            },
-		                            NULL, false, 0);
-		if (ret != SPI_OK_INSERT) elog(ERROR, "cannot insert into quota setting table, error code %d", ret);
-
-	} else if (SPI_processed > 0 && quota_limit_mb < 0)
-	{
-		ret = SPI_execute_with_args("delete from diskquota.target where primaryOid = $1 and tablespaceOid = $2", 2,
-		                            (Oid[]){
-		                                    OIDOID,
-		                                    OIDOID,
-		                            },
-		                            (Datum[]){
-		                                    ObjectIdGetDatum(primaryoid),
-		                                    ObjectIdGetDatum(spcoid),
-		                            },
-		                            NULL, false, 0);
-		if (ret != SPI_OK_DELETE) elog(ERROR, "cannot delete item from target setting table, error code %d", ret);
+		is_null = false;
+		v       = SPI_getbinval(SPI_tuptable->vals[0], SPI_tuptable->tupdesc, 1, &is_null);
+		Assert(is_null == false);
+		row_id = DatumGetInt32(v);
 	}
 
-	/*
-	 * And finish our transaction.
-	 */
-	SPI_finish();
-	return;
+	/* if the schema or role's quota has not been set before */
+	if (SPI_processed == 0 && quota_limit_mb > 0)
+	{
+		ret = SPI_execute_with_args(
+		        "insert into diskquota.target (quotatype, primaryOid, tablespaceOid) values($1, $2, $3) returning "
+		        "rowId",
+		        3,
+		        (Oid[]){
+		                INT4OID,
+		                OIDOID,
+		                OIDOID,
+		        },
+		        (Datum[]){
+		                Int32GetDatum(type),
+		                ObjectIdGetDatum(primaryoid),
+		                ObjectIdGetDatum(spcoid),
+		        },
+		        NULL, false, 0);
+		if (ret != SPI_OK_INSERT_RETURNING) elog(ERROR, "cannot insert into quota setting table, error code %d", ret);
+
+		is_null = false;
+		v       = SPI_getbinval(SPI_tuptable->vals[0], SPI_tuptable->tupdesc, 1, &is_null);
+		Assert(is_null == false);
+		row_id = DatumGetInt32(v);
+	}
+	else if (SPI_processed > 0 && quota_limit_mb < 0)
+	{
+		ret = SPI_execute_with_args(
+		        "delete from diskquota.target where primaryOid = $1 and tablespaceOid = $2 returning rowId", 2,
+		        (Oid[]){
+		                OIDOID,
+		                OIDOID,
+		        },
+		        (Datum[]){
+		                ObjectIdGetDatum(primaryoid),
+		                ObjectIdGetDatum(spcoid),
+		        },
+		        NULL, false, 0);
+		if (ret != SPI_OK_DELETE_RETURNING)
+			elog(ERROR, "cannot delete item from target setting table, error code %d", ret);
+
+		is_null = false;
+		v       = SPI_getbinval(SPI_tuptable->vals[0], SPI_tuptable->tupdesc, 1, &is_null);
+		Assert(is_null == false);
+		row_id = DatumGetInt32(v);
+	}
+	/* No need to update the target table */
+
+	return row_id;
 }
 
 /*
@@ -1104,7 +1252,8 @@ update_diskquota_db_list(Oid dbid, HASHACTION action)
 		{
 			ereport(WARNING, (errmsg("can't alloc memory on dbid cache, there ary too many databases to monitor")));
 		}
-	} else if (action == HASH_REMOVE)
+	}
+	else if (action == HASH_REMOVE)
 	{
 		hash_search(monitoring_dbid_cache, &dbid, HASH_REMOVE, &found);
 		if (!found)
@@ -1130,8 +1279,7 @@ set_per_segment_quota(PG_FUNCTION_ARGS)
 	          (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), errmsg("must be superuser to set disk quota limit")));
 
 	spcname = text_to_cstring(PG_GETARG_TEXT_PP(0));
-	spcname = str_tolower(spcname, strlen(spcname), DEFAULT_COLLATION_OID);
-	spcoid  = get_tablespace_oid(spcname, false);
+	spcoid  = __get_oid_auto_case_convert(get_tablespace_oid, spcname);
 
 	ratio = PG_GETARG_FLOAT4(1);
 
@@ -1142,38 +1290,38 @@ set_per_segment_quota(PG_FUNCTION_ARGS)
 	{
 		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR), errmsg("unable to connect to execute internal query")));
 	}
+	/*
+	 * lock table quota_config table in exlusive mode
+	 *
+	 * Firstly insert the segratio with TABLESPACE_QUOTA
+	 * row into the table(ROWSHARE lock), then udpate the
+	 * segratio for TABLESPACE_SHCEMA/ROLE_QUOTA rows
+	 * (EXLUSIZE lock), if we don't lock the table in
+	 * exlusive mode first, deadlock will heappen.
+	 */
+	ret = SPI_execute("LOCK TABLE diskquota.quota_config IN EXCLUSIVE MODE", false, 0);
+	if (ret != SPI_OK_UTILITY) elog(ERROR, "cannot lock quota_config table, error code %d", ret);
 
-	/* Get all targetOid which are related to this tablespace, and saved into rowIds */
-	ret = SPI_execute_with_args(
-	        "SELECT true FROM diskquota.target AS t, diskquota.quota_config AS q WHERE tablespaceOid = $1 AND "
-	        "(t.quotaType = $2 OR t.quotaType = $3) AND t.primaryOid = q.targetOid AND t.quotaType = q.quotaType",
-	        3,
-	        (Oid[]){
-	                OIDOID,
-	                INT4OID,
-	                INT4OID,
-	        },
-	        (Datum[]){
-	                ObjectIdGetDatum(spcoid),
-	                Int32GetDatum(NAMESPACE_TABLESPACE_QUOTA),
-	                Int32GetDatum(ROLE_TABLESPACE_QUOTA),
-	        },
-	        NULL, true, 0);
-	if (ret != SPI_OK_SELECT) elog(ERROR, "cannot select target and quota setting table: error code %d", ret);
-
-	if (SPI_processed <= 0)
-	{
-		ereport(ERROR, (errmsg("there are no roles or schema quota configed for this tablespace: %s, can't config per "
-		                       "segment ratio for it",
-		                       spcname)));
-	}
+	/*
+	 * insert/update/detele tablespace ratio config in the quota_config table
+	 * for TABLESPACE_QUOTA, it doesn't store any quota info, just used to
+	 * store the ratio for the tablespace.
+	 */
+	set_quota_config_internal(spcoid, INVALID_QUOTA, TABLESPACE_QUOTA, ratio, InvalidOid);
 
 	/*
 	 * UPDATEA NAMESPACE_TABLESPACE_PERSEG_QUOTA AND ROLE_TABLESPACE_PERSEG_QUOTA config for this tablespace
 	 */
+
+	/* set to invalid ratio value if the tablespace per segment quota deleted */
+	if (ratio < 0)
+	{
+		ratio = INVALID_SEGRATIO;
+	}
+
 	ret = SPI_execute_with_args(
 	        "UPDATE diskquota.quota_config AS q set segratio = $1 FROM diskquota.target AS t WHERE "
-	        "q.targetOid = t.primaryOid AND (t.quotaType = $2 OR t.quotaType = $3) AND t.quotaType = "
+	        "q.targetOid = t.rowId AND (t.quotaType = $2 OR t.quotaType = $3) AND t.quotaType = "
 	        "q.quotaType And t.tablespaceOid = $4",
 	        4,
 	        (Oid[]){
@@ -1218,7 +1366,8 @@ worker_spi_get_extension_version(int *major, int *minor)
 	{
 		ereport(WARNING,
 		        (errmsg("[diskquota] when reading installed version lines %ld code = %d", SPI_processed, ret)));
-		return -1;
+		ret = -1;
+		goto out;
 	}
 
 	bool  is_null = false;
@@ -1230,7 +1379,8 @@ worker_spi_get_extension_version(int *major, int *minor)
 	{
 		ereport(WARNING,
 		        (errmsg("[diskquota] 'extversion' is empty in pg_class.pg_extension. catalog might be corrupted")));
-		return -1;
+		ret = -1;
+		goto out;
 	}
 
 	ret = sscanf(version, "%d.%d", major, minor);
@@ -1240,7 +1390,8 @@ worker_spi_get_extension_version(int *major, int *minor)
 		ereport(WARNING, (errmsg("[diskquota] 'extversion' is '%s' in pg_class.pg_extension which is not valid format. "
 		                         "catalog might be corrupted",
 		                         version)));
-		return -1;
+		ret = -1;
+		goto out;
 	}
 
 	ret = 0;
@@ -1357,7 +1508,8 @@ calculate_relation_size_all_forks(RelFileNodeBackend *rnode, char relstorage)
 			totalsize += ctx.size;
 		}
 		return totalsize;
-	} else if (relstorage == RELSTORAGE_AOROWS || relstorage == RELSTORAGE_AOCOLS)
+	}
+	else if (relstorage == RELSTORAGE_AOROWS || relstorage == RELSTORAGE_AOCOLS)
 	{
 		RelationFileStatCtx ctx = {0};
 		ctx.relation_path       = relpathbackend(rnode->node, rnode->backend, MAIN_FORKNUM);
@@ -1370,7 +1522,8 @@ calculate_relation_size_all_forks(RelFileNodeBackend *rnode, char relstorage)
 		relation_file_stat(0, &ctx);
 		ao_foreach_extent_file(relation_file_stat, &ctx);
 		return ctx.size;
-	} else
+	}
+	else
 	{
 		return 0;
 	}
@@ -1412,6 +1565,7 @@ diskquota_relation_open(Oid relid, LOCKMODE mode)
 	{
 		InterruptHoldoffCount = SavedInterruptHoldoffCount;
 		HOLD_INTERRUPTS();
+		EmitErrorReport();
 		FlushErrorState();
 		RESUME_INTERRUPTS();
 	}
@@ -1522,4 +1676,72 @@ diskquota_parse_primary_table_oid(Oid namespace, char *relname)
 		break;
 	}
 	return InvalidOid;
+}
+
+static float4
+get_per_segment_ratio(Oid spcoid)
+{
+	int    ret;
+	float4 segratio = INVALID_SEGRATIO;
+
+	if (!OidIsValid(spcoid)) return segratio;
+
+	/*
+	 * using row share lock to lock TABLESPACE_QUTAO
+	 * row to avoid concurrently updating the segratio
+	 */
+	ret = SPI_execute_with_args(
+	        "select segratio from diskquota.quota_config where targetoid = $1 and quotatype = $2 for share", 2,
+	        (Oid[]){
+	                OIDOID,
+	                INT4OID,
+	        },
+	        (Datum[]){
+	                ObjectIdGetDatum(spcoid),
+	                Int32GetDatum(TABLESPACE_QUOTA),
+	        },
+	        NULL, false, 0);
+	if (ret != SPI_OK_SELECT)
+	{
+		elog(ERROR, "cannot get per segment ratio for the tablepace: error code %d", ret);
+	}
+
+	if (SPI_processed == 1)
+	{
+		TupleDesc tupdesc = SPI_tuptable->tupdesc;
+		HeapTuple tup     = SPI_tuptable->vals[0];
+		Datum     dat;
+		bool      isnull;
+
+		dat = SPI_getbinval(tup, tupdesc, 1, &isnull);
+		if (!isnull)
+		{
+			segratio = DatumGetFloat4(dat);
+		}
+	}
+	return segratio;
+}
+
+/*
+ * For quota type: TABLESPACE_QUOTA, it only stores
+ * segratio not quota info. So when segratio is
+ * negtive, we can just delete it.
+ */
+static bool
+to_delete_quota(QuotaType type, int64 quota_limit_mb, float4 segratio)
+{
+	if (quota_limit_mb < 0)
+		return true;
+	else if (segratio < 0 && type == TABLESPACE_QUOTA)
+		return true;
+	return false;
+}
+
+static void
+check_role(Oid roleoid, char *rolname, int64 quota_limit_mb)
+{
+	/* reject setting quota for super user, but deletion is allowed */
+	if (roleoid == BOOTSTRAP_SUPERUSERID && quota_limit_mb >= 0)
+		ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+		                errmsg("Can not set disk quota for system owner: %s", rolname)));
 }

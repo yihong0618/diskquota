@@ -46,7 +46,22 @@ https://extensions.ci.gpdb.pivotal.io/teams/main/pipelines/COMMIT:diskquota:gpdb
 
 ## Fly the release pipeline
 
-TBD
+By default, the release is built from the `gpdb` branch.
+
+The release pipeline should be located in https://prod.ci.gpdb.pivotal.io
+
+```
+# Login to prod
+fly -t prod login -c https://prod.ci.gpdb.pivotal.io
+# Fly the release pipeline
+./fly.sh -t prod -c release
+```
+
+To fly a release pipeline from a specific branch:
+
+```
+./fly.sh -t <target> -c release -b release/<major>.<minor>
+```
 
 ## Fly the dev pipeline
 

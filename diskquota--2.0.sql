@@ -3,15 +3,18 @@
 
 CREATE SCHEMA diskquota;
 
+-- when (quotatype == NAMESPACE_QUOTA/ROLE_QUOTA) then targetOid = role_oid/schema_oid;
+-- when (quotatype == NAMESPACE_TABLESPACE_QUOTA/ROLE_TABLESPACE_QUOTA) then targetOid = diskquota.target.rowId;
 CREATE TABLE diskquota.quota_config(
 	targetOid oid,
 	quotatype int,
 	quotalimitMB int8,
-	segratio float4 DEFAULT -1,
+	segratio float4 DEFAULT 0,
 	PRIMARY KEY(targetOid, quotatype)
 ) DISTRIBUTED BY (targetOid, quotatype);
 
 CREATE TABLE diskquota.target (
+	rowId serial,
 	quotatype int, --REFERENCES disquota.quota_config.quotatype,
 	primaryOid oid,
 	tablespaceOid oid, --REFERENCES pg_tablespace.oid,
@@ -42,7 +45,7 @@ CREATE TYPE diskquota.diskquota_active_table_type AS (
 	"GP_SEGMENT_ID" smallint
 );
 
-CREATE TYPE diskquota.blackmap_entry AS (
+CREATE TYPE diskquota.rejectmap_entry AS (
 	target_oid oid,
 	database_oid oid,
 	tablespace_oid oid,
@@ -50,7 +53,7 @@ CREATE TYPE diskquota.blackmap_entry AS (
 	seg_exceeded boolean
 );
 
-CREATE TYPE diskquota.blackmap_entry_detail AS (
+CREATE TYPE diskquota.rejectmap_entry_detail AS (
 	target_type text,
 	target_oid oid,
 	database_oid oid,
@@ -83,8 +86,8 @@ CREATE FUNCTION diskquota.diskquota_fetch_table_stat(int4, oid[]) RETURNS setof 
 CREATE FUNCTION diskquota.set_schema_tablespace_quota(text, text, text) RETURNS void STRICT AS '$libdir/diskquota-2.0.so' LANGUAGE C;
 CREATE FUNCTION diskquota.set_role_tablespace_quota(text, text, text) RETURNS void STRICT AS '$libdir/diskquota-2.0.so' LANGUAGE C;
 CREATE FUNCTION diskquota.set_per_segment_quota(text, float4) RETURNS void STRICT AS '$libdir/diskquota-2.0.so' LANGUAGE C;
-CREATE FUNCTION diskquota.refresh_blackmap(diskquota.blackmap_entry[], oid[]) RETURNS void STRICT AS '$libdir/diskquota-2.0.so' LANGUAGE C;
-CREATE FUNCTION diskquota.show_blackmap() RETURNS setof diskquota.blackmap_entry_detail AS '$libdir/diskquota-2.0.so', 'show_blackmap' LANGUAGE C;
+CREATE FUNCTION diskquota.refresh_rejectmap(diskquota.rejectmap_entry[], oid[]) RETURNS void STRICT AS '$libdir/diskquota-2.0.so' LANGUAGE C;
+CREATE FUNCTION diskquota.show_rejectmap() RETURNS setof diskquota.rejectmap_entry_detail AS '$libdir/diskquota-2.0.so', 'show_rejectmap' LANGUAGE C;
 CREATE FUNCTION diskquota.pause() RETURNS void STRICT AS '$libdir/diskquota-2.0.so', 'diskquota_pause' LANGUAGE C;
 CREATE FUNCTION diskquota.resume() RETURNS void STRICT AS '$libdir/diskquota-2.0.so', 'diskquota_resume' LANGUAGE C;
 CREATE FUNCTION diskquota.show_worker_epoch() RETURNS bigint STRICT AS '$libdir/diskquota-2.0.so', 'show_worker_epoch' LANGUAGE C;
@@ -178,7 +181,7 @@ SELECT (
     (SELECT SUM(size) FROM diskquota.table_size WHERE segid = -1)
 ) AS dbsize;
 
-CREATE VIEW diskquota.blackmap AS SELECT * FROM diskquota.show_blackmap() AS BM;
+CREATE VIEW diskquota.rejectmap AS SELECT * FROM diskquota.show_rejectmap() AS BM;
 
 CREATE VIEW diskquota.show_fast_schema_tablespace_quota_view AS
 WITH
@@ -208,27 +211,27 @@ WITH
   ),
   full_quota_config AS (
     SELECT
-      targetOid,
+      primaryOid,
       tablespaceoid,
       quotalimitMB
     FROM
       diskquota.quota_config AS config,
       diskquota.target AS target
     WHERE
-      config.targetOid = target.primaryOid AND
+      config.targetOid = target.rowId AND
       config.quotaType = target.quotaType AND
       config.quotaType = 2 -- NAMESPACE_TABLESPACE_QUOTA
   )
 SELECT
   nspname AS schema_name,
-  targetoid AS schema_oid,
+  primaryoid AS schema_oid,
   spcname AS tablespace_name,
   tablespaceoid AS tablespace_oid,
   quotalimitMB AS quota_in_mb,
   COALESCE(total_size, 0) AS nspsize_tablespace_in_bytes
 FROM
   full_quota_config JOIN
-  pg_namespace ON targetoid = pg_namespace.oid JOIN
+  pg_namespace ON primaryOid = pg_namespace.oid JOIN
   pg_tablespace ON tablespaceoid = pg_tablespace.oid LEFT OUTER JOIN
   quota_usage ON pg_namespace.oid = relnamespace AND pg_tablespace.oid = reltablespace;
 
@@ -260,29 +263,40 @@ WITH
   ),
   full_quota_config AS (
     SELECT
-      targetOid,
+      primaryOid,
       tablespaceoid,
       quotalimitMB
     FROM
       diskquota.quota_config AS config,
       diskquota.target AS target
     WHERE
-      config.targetOid = target.primaryOid AND
+      config.targetOid = target.rowId AND
       config.quotaType = target.quotaType AND
       config.quotaType = 3 -- ROLE_TABLESPACE_QUOTA
   )
 SELECT
   rolname AS role_name,
-  targetoid AS role_oid,
+  primaryoid AS role_oid,
   spcname AS tablespace_name,
   tablespaceoid AS tablespace_oid,
   quotalimitMB AS quota_in_mb,
   COALESCE(total_size, 0) AS rolsize_tablespace_in_bytes
 FROM
   full_quota_config JOIN
-  pg_roles ON targetoid = pg_roles.oid JOIN
+  pg_roles ON primaryoid = pg_roles.oid JOIN
   pg_tablespace ON tablespaceoid = pg_tablespace.oid LEFT OUTER JOIN
   quota_usage ON pg_roles.oid = relowner AND pg_tablespace.oid = reltablespace;
+
+CREATE VIEW diskquota.show_segment_ratio_quota_view AS
+SELECT 
+  spcname as tablespace_name,
+  pg_tablespace.oid as tablespace_oid,
+  segratio as per_seg_quota_ratio
+FROM
+  diskquota.quota_config JOIN
+  pg_tablespace ON targetOid = pg_tablespace.oid
+  AND quotatype = 4;
+
 -- view end
 
 -- prepare to boot

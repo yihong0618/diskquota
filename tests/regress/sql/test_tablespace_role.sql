@@ -77,9 +77,28 @@ SELECT diskquota.wait_for_worker_new_epoch();
 -- expect insert success
 INSERT INTO b SELECT generate_series(1,100);
 
+-- superuser is blocked to set quota
+-- start_ignore
+SELECT rolname from pg_roles where rolsuper=true;
+-- end_ignore
+\gset
+select diskquota.set_role_tablespace_quota(:'rolname', 'rolespc', '1mb');
+
+-- start_ignore
+\! mkdir -p /tmp/rolespc3
+-- end_ignore
+DROP ROLE IF EXISTS "Rolespcu3";
+CREATE ROLE "Rolespcu3" NOLOGIN;
+DROP TABLESPACE  IF EXISTS "Rolespc3";
+CREATE TABLESPACE "Rolespc3" LOCATION '/tmp/rolespc3';
+SELECT diskquota.set_role_tablespace_quota('rolespcu1', '"Rolespc3"', '-1 MB');
+SELECT diskquota.set_role_tablespace_quota('"Rolespcu3"', 'rolespc', '-1 mB');
+SELECT diskquota.set_role_tablespace_quota('"Rolespcu3"', '"Rolespc3"', '-1 Mb');
+
 DROP TABLE b, b2;
 DROP ROLE rolespcu1, rolespcu2;
 RESET search_path;
 DROP SCHEMA rolespcrole;
 DROP TABLESPACE rolespc;
 DROP TABLESPACE rolespc2;
+DROP TABLESPACE "Rolespc3";
