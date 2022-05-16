@@ -25,5 +25,5 @@ jobs:
           ./configure --with-python --disable-orca  --disable-gpcloud --with-gssapi --prefix=/usr/local/gpdb
           sudo make -j8
           sudo make -j8 install
-          sudo . /usr/.local/gpdb/greenplum_path.sh
+          sudo sh /usr/local/gpdb/greenplum_path.sh
           sudo make create-demo-cluster
