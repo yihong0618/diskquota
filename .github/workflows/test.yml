@@ -17,4 +17,4 @@ jobs:
           ref: 6X_STABLE 
       - name: Compile
         run: |
-          ls
+          ./README.ubuntu.bash 
