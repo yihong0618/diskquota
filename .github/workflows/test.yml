@@ -15,5 +15,5 @@ jobs:
         with:
           repository: greenplum-db/gpdb
           ref: 6X_STABLE 
-        run:
+        run: |
           ./README.Ubuntu.bash
