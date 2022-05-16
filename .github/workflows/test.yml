@@ -25,5 +25,6 @@ jobs:
           ./configure --with-python --disable-orca --disable-gpcloud --with-gssapi --prefix=/home/runner/.local/gpdb
           make -j8 && make -j8 install
       - name: Run GPDB 
+        run: |
           bash /home/runner/.local/gpdb/greenplum_path.sh
           make create-demo-cluster
