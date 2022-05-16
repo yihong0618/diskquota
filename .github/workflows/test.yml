@@ -17,4 +17,5 @@ jobs:
           ref: 6X_STABLE 
       - name: Compile
         run: |
-          ./README.ubuntu.bash 
+          sudo apt-get update
+          sudo ./README.ubuntu.bash 
