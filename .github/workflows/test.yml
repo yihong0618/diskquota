@@ -23,7 +23,7 @@ jobs:
           cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys
           chmod 600 ~/.ssh/authorized_keys
           ./configure --with-python --disable-orca  --disable-gpcloud --with-gssapi --prefix=/usr/local/gpdb
-          make -j8
-          make -j8 install
-          source /usr/local/gpdb/greenplum_path.sh
-          make create-demo-cluster
+          sudo make -j8
+          sudo make -j8 install
+          sudo source /usr/.local/gpdb/greenplum_path.sh
+          sudo make create-demo-cluster
