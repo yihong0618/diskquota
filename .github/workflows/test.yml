@@ -17,7 +17,7 @@ jobs:
           ref: 6X_STABLE 
       - name: Compile
         run:
-          sudo ./README.Ubuntu.bash
+          ./README.Ubuntu.bash
 
 
 
