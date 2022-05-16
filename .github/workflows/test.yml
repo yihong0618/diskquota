@@ -18,4 +18,12 @@ jobs:
       - name: Compile
         run: |
           sudo apt-get update
-          sudo ./README.ubuntu.bash 
+          sudo ./README.ubuntu.bash
+          ssh-keygen
+          cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys
+          chmod 600 ~/.ssh/authorized_keys
+          ./configure --with-perl --with-python --with-libxml --with-gssapi --prefix=/usr/local/gpdb
+          make -j8
+          make -j8 install
+          source /usr/local/gpdb/greenplum_path.sh
+          make create-demo-cluster
