@@ -53,4 +53,4 @@ jobs:
           make -j8 && make -j8 install
       - name: Run GPDB 
         run: |
-          GPHOME=/home/runner/.local/gpdb make create-demo-cluster
+          GPHOME=/home/runner/.local/gpdb WITH_MIRRORS=false make create-demo-cluster
