@@ -53,4 +53,9 @@ jobs:
           make -j8 && make -j8 install
       - name: Run GPDB 
         run: |
-          GPHOME=/home/runner/.local/gpdb WITH_MIRRORS=false make create-demo-cluster
+          export GPHOME=/home/runner/.local/gpdb
+          export PYTHONPATH="${GPHOME}/lib/python"
+          export PATH="${GPHOME}/bin:${PATH}"
+          export LD_LIBRARY_PATH="${GPHOME}/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+          export OPENSSL_CONF="${GPHOME}/etc/openssl.cnf"
+          make create-demo-cluster
