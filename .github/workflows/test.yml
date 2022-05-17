@@ -15,6 +15,9 @@ jobs:
         with:
           repository: greenplum-db/gpdb
           ref: 6X_STABLE 
+      - name: Set env
+        run: |
+           
       - name: Compile
         run: |
           sudo apt-get update
@@ -26,5 +29,4 @@ jobs:
           make -j8 && make -j8 install
       - name: Run GPDB 
         run: |
-          bash /home/runner/.local/gpdb/greenplum_path.sh
-          make create-demo-cluster
+          GPHOME=/home/runner/.local/gpdb make create-demo-cluster
