@@ -51,13 +51,13 @@ jobs:
           chmod 600 ~/.ssh/authorized_keys
           ./configure --with-python --disable-orca --disable-gpcloud --with-gssapi --prefix=/home/runner/.local/gpdb
           make -j8 && make -j8 install
-      - name: Setup Debug Session
-        uses: csexton/debugger-action@master
-      # - name: Run GPDB 
-      #   run: |
-      #     export GPHOME=/home/runner/.local/gpdb
-      #     export PYTHONPATH="${GPHOME}/lib/python"
-      #     export PATH="${GPHOME}/bin:${PATH}"
-      #     export LD_LIBRARY_PATH="${GPHOME}/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-      #     export OPENSSL_CONF="${GPHOME}/etc/openssl.cnf"
-      #     make create-demo-cluster
+      - name: Setup tmate session
+        uses: mxschmitt/action-tmate@v3
+      - name: Run GPDB 
+        run: |
+          export GPHOME=/home/runner/.local/gpdb
+          export PYTHONPATH="${GPHOME}/lib/python"
+          export PATH="${GPHOME}/bin:${PATH}"
+          export LD_LIBRARY_PATH="${GPHOME}/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+          export OPENSSL_CONF="${GPHOME}/etc/openssl.cnf"
+          make create-demo-cluster
