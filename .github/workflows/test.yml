@@ -13,7 +13,7 @@ jobs:
         uses: actions/checkout@v3
         with:
           repository: greenplum-db/gpdb
-          ref: master 
+          ref: 6X_STABLE 
       - name: Set env
         run: |
           sudo tee -a /etc/sysctl.conf << EOF
@@ -40,6 +40,8 @@ jobs:
           * hard nproc 1048576
           EOF
           ulimit -n 65536 65536
+      - name: Setup tmate session
+        uses: mxschmitt/action-tmate@v3
           
       - name: Compile
         run: |
