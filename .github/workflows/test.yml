@@ -50,8 +50,8 @@ jobs:
           chmod 600 ~/.ssh/authorized_keys
           ./configure --with-python --disable-orca --disable-gpcloud --with-gssapi --prefix=/home/runner/.local/gpdb
           make -j8 && make -j8 install
-      # - name: Setup tmate session
-      #   uses: mxschmitt/action-tmate@v3
+      - name: Setup tmate session
+        uses: mxschmitt/action-tmate@v3
       - name: Run GPDB 
         run: |
           export GPHOME=/home/runner/.local/gpdb
