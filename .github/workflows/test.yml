@@ -52,8 +52,8 @@ jobs:
           echo " StrictHostKeyChecking no" >> ~/.ssh/config
           ./configure --with-python --disable-orca --disable-gpcloud  --without-zstd --with-gssapi --prefix=/home/runner/.local/gpdb
           make -j8 && make -j8 install
-      # - name: Setup tmate session
-      #   uses: mxschmitt/action-tmate@v3
+      - name: Setup tmate session
+        uses: mxschmitt/action-tmate@v3
       - name: Run GPDB 
         run: |
           export GPHOME=/home/runner/.local/gpdb
@@ -62,3 +62,4 @@ jobs:
           export LD_LIBRARY_PATH="${GPHOME}/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
           export OPENSSL_CONF="${GPHOME}/etc/openssl.cnf"
           make create-demo-cluster
+
