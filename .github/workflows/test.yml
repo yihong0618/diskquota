@@ -52,6 +52,7 @@ jobs:
           echo " StrictHostKeyChecking no" >> ~/.ssh/config
           ./configure --with-python --disable-orca --disable-gpcloud  --without-zstd --with-gssapi --prefix=/home/runner/.local/gpdb
           make -j8 && make -j8 install
+
       - name: Setup tmate session
         uses: mxschmitt/action-tmate@v3
 
