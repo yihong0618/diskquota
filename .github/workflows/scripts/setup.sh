@@ -38,7 +38,7 @@ ssh_keyscan_for_user() {
 set_limits() {
   # Currently same as what's recommended in install guide
   if [ -d /etc/security/limits.d ]; then
-    cat > /etc/security/limits.d/runner-limits.conf <<-EOF
+    cat > sudo /etc/security/limits.d/runner-limits.conf <<-EOF
                 runner soft core unlimited
                 runner soft nproc 131072
                 runner soft nofile 65536
