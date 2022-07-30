@@ -58,7 +58,7 @@ create_runner_if_not_existing() {
 }
 
 setup_runner_user() {
-  groupadd supergroup
+  sudo groupadd supergroup
   case "$TEST_OS" in
     centos)
       user_add_cmd="/usr/sbin/useradd -G supergroup,tty runner"
