@@ -75,7 +75,7 @@ setup_runner_user() {
       ;;
     *) echo "Unknown OS: $TEST_OS"; exit 1 ;;
   esac
-  echo -e "password\npassword" | passwd runner
+  echo -e "password\npassword" | sudo passwd runner
   setup_ssh_for_user runner
   set_limits
 }
