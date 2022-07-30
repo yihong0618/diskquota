@@ -40,6 +40,9 @@ jobs:
           * hard nproc 1048576
           EOF
           ulimit -n 65536 65536
+      - name: Setup Up gpadmin
+        run: |
+          echo test
       - name: Compile
         run: |
           sudo apt-get update
@@ -55,11 +58,4 @@ jobs:
 
       - name: Run GPDB 
         run: |
-          export GPHOME=/home/runner/.local/gpdb
-          export PYTHONPATH="${GPHOME}/lib/python"
-          export PATH="${GPHOME}/bin:${PATH}"
-          export LD_LIBRARY_PATH="${GPHOME}/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-          export OPENSSL_CONF="${GPHOME}/etc/openssl.cnf"
-          su gpadmin
           make create-demo-cluster
-
