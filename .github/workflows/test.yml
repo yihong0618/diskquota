@@ -86,7 +86,6 @@ jobs:
           LANG=en_US.utf8 make create-demo-cluster
       - name: Check Run
         run: |
-          cd gpdb
           source /home/runner/.local/gpdb/greenplum_path.sh 
           source gpdb/gpAux/gpdemo/gpdemo-env.sh
           psql -p 7000 postgres -c 'select version();'
