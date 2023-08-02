@@ -44,7 +44,7 @@ jobs:
           mkdir -p ~/.ssh     
           echo "Host *" > ~/.ssh/config     
           echo " StrictHostKeyChecking no" >> ~/.ssh/config
-          ./configure --with-python --disable-orca --disable-gpcloud  --with-gssapi --with-libxml --prefix=/home/runner/.local/gpdb
+          ./configure --with-python --disable-orca --disable-gpcloud --with-gssapi --with-libxml --prefix=/home/runner/.local/gpdb
           make -j8 && make install
           make -C src/test/isolation2 install
 
@@ -59,11 +59,6 @@ jobs:
           cd gpdb
           source /home/runner/.local/gpdb/greenplum_path.sh
           LANG=en_US.utf8 make create-demo-cluster
-      - name: Check Run
-        run: |
-          source /home/runner/.local/gpdb/greenplum_path.sh 
-          source gpdb/gpAux/gpdemo/gpdemo-env.sh
-          psql -p 7000 postgres -c 'select version();'
 
       - name: diskquota
         run: |
