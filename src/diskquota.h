@@ -46,7 +46,7 @@ typedef enum
 } DiskquotaHashFunction;
 
 /* max number of monitored database with diskquota enabled */
-#define MAX_NUM_MONITORED_DB 50
+#define MAX_NUM_MONITORED_DB 10
 #define LAUNCHER_SCHEMA "diskquota_utility"
 #define EXTENSION_SCHEMA "diskquota"
 extern int diskquota_worker_timeout;
