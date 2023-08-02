@@ -93,6 +93,8 @@ jobs:
 
       - name: diskquota
         run: |
+          source /home/runner/.local/gpdb/greenplum_path.sh 
+          source gpdb/gpAux/gpdemo/gpdemo-env.sh
           mkdir build
           cd build
           cmake ..
