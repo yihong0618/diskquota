@@ -1,5 +1,5 @@
-cmake_minimum_required(VERSION 3.18)
-# file(ARCHIVE_EXTRACT foo) need 3.18
+cmake_minimum_required(VERSION 3.20)
+# cmake_path requires 3.20
 
 project(diskquota)
 
@@ -64,24 +64,11 @@ add_compile_definitions(
   DISKQUOTA_PATCH_VERSION=${DISKQUOTA_PATCH_VERSION}
   DISKQUOTA_BINARY_NAME="${DISKQUOTA_BINARY_NAME}")
 
-list(
-  APPEND
-  diskquota_SRC
-  diskquota.c
-  diskquota_utility.c
-  enforcement.c
-  gp_activetable.c
-  quotamodel.c
-  relation_cache.c)
+set(SRC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src")
+file(GLOB diskquota_SRC "${SRC_DIR}/*.c")
 
-list(
-  APPEND
-  diskquota_DDL
-  diskquota.control
-  diskquota--1.0.sql
-  diskquota--1.0--2.0.sql
-  diskquota--2.0.sql
-  diskquota--2.0--1.0.sql)
+set(DISKQUOTA_DDL_DIR "${CMAKE_CURRENT_SOURCE_DIR}/control/ddl")
+file(GLOB diskquota_DDL "${DISKQUOTA_DDL_DIR}/*")
 
 add_library(diskquota MODULE ${diskquota_SRC})
 
@@ -96,7 +83,7 @@ set_target_properties(
   PROPERTIES OUTPUT_NAME ${DISKQUOTA_BINARY_NAME}
              PREFIX ""
              C_STANDARD 99
-             LINKER_LANGUAGE "CXX")
+             LINKER_LANGUAGE "C")
 
 # packing part, move to a separate file if this part is too large
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/Distro.cmake)
@@ -104,8 +91,21 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/Distro.cmake)
 if(DEFINED DISKQUOTA_LAST_RELEASE_PATH)
   message(STATUS "Copy pervious installer from ${DISKQUOTA_LAST_RELEASE_PATH}")
   file(ARCHIVE_EXTRACT INPUT ${DISKQUOTA_LAST_RELEASE_PATH} PATTERNS "*.so")
-  file(GLOB DISKQUOTA_PREVIOUS_LIBRARY
+  file(GLOB so_files_list
        "${CMAKE_BINARY_DIR}/lib/postgresql/*.so")
+
+  foreach(so_path IN LISTS so_files_list)
+    get_filename_component(so_name ${so_path} NAME_WLE)
+    # Replace 'diskquota-x.y' with 'x.y'. 'diskquota' won't be replaced, which belongs to 1.x release.
+    string(REPLACE "diskquota-" "" so_ver ${so_name})
+    # Install the previous so files. Those so files have versions less than current version.
+    # diskqutoa.so doesn't have version string in the file name. It belongs to 1.x release.
+    if((${so_ver} STREQUAL "diskquota") OR
+      ${so_ver} VERSION_LESS ${DISKQUOTA_MAJOR_VERSION}.${DISKQUOTA_MINOR_VERSION})
+      list(APPEND DISKQUOTA_PREVIOUS_LIBRARY ${so_path})
+    endif()
+  endforeach()
+
   install(PROGRAMS ${DISKQUOTA_PREVIOUS_LIBRARY} DESTINATION "lib/postgresql/")
 
   get_filename_component(
@@ -145,7 +145,7 @@ add_custom_target(create_artifact
   COMMAND
   ${CMAKE_COMMAND} --build . --target package
   COMMAND
-  ${CMAKE_COMMAND} -E tar cvf ${artifact_NAME} "${tgz_NAME}.tar.gz")
+  ${CMAKE_COMMAND} -E tar czvf ${artifact_NAME} "${tgz_NAME}.tar.gz")
 # packing end
 
 # Create build-info

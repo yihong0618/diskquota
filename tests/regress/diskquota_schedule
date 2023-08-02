@@ -1,5 +1,6 @@
 test: config
 test: test_create_extension
+test: test_readiness_logged
 test: test_init_table_size_table
 test: test_relation_size
 test: test_relation_cache
@@ -30,6 +31,7 @@ test: test_fetch_table_stat
 test: test_appendonly
 test: test_rejectmap
 test: test_clean_rejectmap_after_drop
+test: test_rejectmap_mul_db
 test: test_ctas_pause
 test: test_ctas_role
 test: test_ctas_schema
@@ -37,5 +39,8 @@ test: test_ctas_tablespace_role
 test: test_ctas_tablespace_schema
 test: test_default_tablespace
 test: test_tablespace_diff_schema
+test: test_worker_schedule
+test: test_worker_schedule_exception
+test: test_dbname_encoding
 test: test_drop_extension
 test: reset_config
