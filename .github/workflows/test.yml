@@ -9,10 +9,6 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout gpdb
-        uses: actions/checkout@v3
-        with:
-          repository: greenplum-db/gpdb
       - name: Free Disk Space (Ubuntu)
         uses: jlumbroso/free-disk-space@main
         with:
@@ -27,6 +23,10 @@ jobs:
           large-packages: true
           docker-images: true
           swap-storage: true
+      - name: Checkout gpdb
+        uses: actions/checkout@v3
+        with:
+          repository: greenplum-db/gpdb
       - name: Set env
         run: |
           sudo tee -a /etc/sysctl.conf << EOF
@@ -71,6 +71,7 @@ jobs:
       - name: Install python package
         run: |
           pip3 install -r python-dependencies.txt
+          pip3 install cmake
 
       - name: Run GPDB 
         run: |
@@ -84,6 +85,20 @@ jobs:
 
       - name: Checkout diskquota 
         uses: actions/checkout@v3
+      
+      - name: diskquota
+        run: |
+          pwd
+          source /home/runner/.local/gpdb/greenplum_path.sh 
+          source /home/runner/work/gpdb/gpdb/gpAux/gpdemo/gpdemo-env.sh
+          mkdir build
+          cd build
+          cmake ..
+          make
+          make install
+          gpconfig -c shared_preload_libraries -v 'diskquota-2.2'
+          gpstop -ar
+          make installcheck
 
       - name: Setup upterm session
         if: ${{  failure() }}
