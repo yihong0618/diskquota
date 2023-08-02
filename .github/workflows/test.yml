@@ -23,10 +23,14 @@ jobs:
           large-packages: true
           docker-images: true
           swap-storage: true
+      - name: Checkout
+        uses: actions/checkout@v3
+
       - name: Checkout gpdb
         uses: actions/checkout@v3
         with:
           repository: greenplum-db/gpdb
+          path: gpdb
       - name: Set env
         run: |
           sudo tee -a /etc/sysctl.conf << EOF
@@ -55,9 +59,11 @@ jobs:
           ulimit -n 65536 65536
       - name: Compile
         run: |
+          ls
+          pwd
           sudo apt-get update
           sudo apt-get install libipc-run-perl clang llvm
-          
+          cd gpdb
           sudo ./README.Ubuntu.bash
           ssh-keygen -q -t rsa -N '' -f ~/.ssh/id_rsa <<<y >/dev/null 2>&1
           cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys
@@ -67,6 +73,7 @@ jobs:
           echo " StrictHostKeyChecking no" >> ~/.ssh/config
           ./configure --with-python --disable-orca --disable-gpcloud  --with-gssapi --disable-cassert --enable-tap-tests --with-zstd --with-llvm --with-libxml --prefix=/home/runner/.local/gpdb
           make -j8 && make install
+          make -C src/test/isolation2 install
 
       - name: Install python package
         run: |
@@ -83,14 +90,10 @@ jobs:
           source gpAux/gpdemo/gpdemo-env.sh
           psql -p 7000 postgres -c 'select version();'
 
-      - name: Checkout diskquota 
-        uses: actions/checkout@v3
-      
       - name: diskquota
         run: |
+          cd ..
           pwd
-          source /home/runner/.local/gpdb/greenplum_path.sh 
-          source /home/runner/work/gpdb/gpdb/gpAux/gpdemo/gpdemo-env.sh
           mkdir build
           cd build
           cmake ..
