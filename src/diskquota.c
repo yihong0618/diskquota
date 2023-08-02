@@ -235,7 +235,7 @@ _PG_init(void)
 	/* values are used in later calls */
 	define_guc_variables();
 
-	//init_disk_quota_shmem();
+	init_disk_quota_shmem();
 	init_disk_quota_enforcement();
 	init_active_table_hook();
 

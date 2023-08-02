@@ -45,7 +45,7 @@
 #include <math.h>
 
 /* cluster level max size of rejectmap */
-#define MAX_DISK_QUOTA_REJECT_ENTRIES (1024 * 1024)
+#define MAX_DISK_QUOTA_REJECT_ENTRIES (1 * 1024)
 /* cluster level init size of rejectmap */
 #define INIT_DISK_QUOTA_REJECT_ENTRIES 8192
 /* per database level max size of rejectmap */
