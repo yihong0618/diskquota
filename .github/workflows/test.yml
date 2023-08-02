@@ -9,16 +9,24 @@ jobs:
   build:
     runs-on: ubuntu-18.04
     steps:
-      - name: Checkout 0
-        uses: actions/checkout@v2
-      - name: run setup runner
-        run: |
-          .github/workflows/scripts/setup.sh
-      - name: Checkout 1
+      - name: Checkout gpdb
         uses: actions/checkout@v3
         with:
           repository: greenplum-db/gpdb
-          ref: 6X_STABLE 
+      - name: Free Disk Space (Ubuntu)
+        uses: jlumbroso/free-disk-space@main
+        with:
+          # this might remove tools that are actually needed,
+          # if set to "true" but frees about 6 GB
+          tool-cache: false
+          # all of these default to true, but feel free to set to
+          # "false" if necessary for your workflow
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
       - name: Set env
         run: |
           sudo tee -a /etc/sysctl.conf << EOF
@@ -45,23 +53,43 @@ jobs:
           * hard nproc 1048576
           EOF
           ulimit -n 65536 65536
-      - name: Setup Up gpadmin
-        run: |
-          echo test
       - name: Compile
         run: |
           sudo apt-get update
-          sudo ./README.ubuntu.bash
+          sudo apt-get install libipc-run-perl clang llvm
+          
+          sudo ./README.Ubuntu.bash
           ssh-keygen -q -t rsa -N '' -f ~/.ssh/id_rsa <<<y >/dev/null 2>&1
           cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys
           chmod 600 ~/.ssh/authorized_keys
           mkdir -p ~/.ssh     
           echo "Host *" > ~/.ssh/config     
           echo " StrictHostKeyChecking no" >> ~/.ssh/config
-          ./configure --with-python --disable-orca --disable-gpcloud  --without-zstd --with-gssapi --prefix=/home/runner/.local/gpdb
-          make -j8 && make -j8 install
+          ./configure --with-python --disable-orca --disable-gpcloud  --with-gssapi --disable-cassert --enable-tap-tests --with-zstd --with-llvm --with-libxml --prefix=/home/runner/.local/gpdb
+          make -j8 && make install
+
+      - name: Install python package
+        run: |
+          pip3 install -r python-dependencies.txt
 
       - name: Run GPDB 
         run: |
           source /home/runner/.local/gpdb/greenplum_path.sh
-          make create-demo-cluster
+          LANG=en_US.utf8 make create-demo-cluster
+      - name: Check Run
+        run: |
+          source /home/runner/.local/gpdb/greenplum_path.sh 
+          source gpAux/gpdemo/gpdemo-env.sh
+          psql -p 7000 postgres -c 'select version();'
+
+      - name: Checkout diskquota 
+        uses: actions/checkout@v3
+
+      - name: Setup upterm session
+        if: ${{  failure() }}
+        uses: lhotari/action-upterm@v1
+ 
+      - name: Check diff
+        if: ${{  failure() }}
+        run: | 
+          cat /home/runner/work/gpdb/gpdb/src/test/regress/regression.diffs
