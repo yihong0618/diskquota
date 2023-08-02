@@ -59,8 +59,6 @@ jobs:
           ulimit -n 65536 65536
       - name: Compile
         run: |
-          ls
-          pwd
           sudo apt-get update
           sudo apt-get install libipc-run-perl clang llvm
           cd gpdb
@@ -77,23 +75,24 @@ jobs:
 
       - name: Install python package
         run: |
+          cd gpdb
           pip3 install -r python-dependencies.txt
           pip3 install cmake
 
       - name: Run GPDB 
         run: |
+          cd gpdb
           source /home/runner/.local/gpdb/greenplum_path.sh
           LANG=en_US.utf8 make create-demo-cluster
       - name: Check Run
         run: |
+          cd gpdb
           source /home/runner/.local/gpdb/greenplum_path.sh 
-          source gpAux/gpdemo/gpdemo-env.sh
+          source gpdb/gpAux/gpdemo/gpdemo-env.sh
           psql -p 7000 postgres -c 'select version();'
 
       - name: diskquota
         run: |
-          cd ..
-          pwd
           mkdir build
           cd build
           cmake ..
@@ -107,7 +106,3 @@ jobs:
         if: ${{  failure() }}
         uses: lhotari/action-upterm@v1
  
-      - name: Check diff
-        if: ${{  failure() }}
-        run: | 
-          cat /home/runner/work/gpdb/gpdb/src/test/regress/regression.diffs
